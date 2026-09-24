@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — red console scare + fullscreen locker, no sound
+// werkaramel — pixel eye console scare + fullscreen locker, no sound
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
@@ -21,7 +21,6 @@ const COLORREF L_FG     = RGB(255, 255, 255);
 const COLORREF L_DIM    = RGB(90, 90, 90);
 const COLORREF L_ACCENT = RGB(200, 30, 30);
 
-// ── консоль ─────────────────────────────────────────────────
 void SetConsoleColor(WORD attr) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), attr);
 }
@@ -31,7 +30,7 @@ void Gotoxy(int x, int y) {
     SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
 }
 
-void TypeText(const std::wstring& s, int x, int y, int delay_ms = 80) {
+void TypeText(const std::wstring& s, int x, int y, int delay_ms = 70) {
     Gotoxy(x, y);
     for (wchar_t c : s) {
         std::wcout << c;
@@ -41,80 +40,79 @@ void TypeText(const std::wstring& s, int x, int y, int delay_ms = 80) {
 }
 
 void DrawEye(int frame) {
-    const wchar_t* eye_open[] = {
-        L"            .-''''''''''''''-.            ",
-        L"          .'                   '.          ",
-        L"         /                       \\         ",
-        L"        /     .---.     .---.     \\        ",
-        L"       /     /     \\   /     \\     \\       ",
-        L"      |     |  .-.  | |  .-.  |     |      ",
-        L"      |     | ( @ ) | | ( @ ) |     |      ",
-        L"      |     |  '-'  | |  '-'  |     |      ",
-        L"       \\     \\     /   \\     /     /       ",
-        L"        \\     '---'     '---'     /        ",
-        L"         \\                       /         ",
-        L"          '.                   .'          ",
-        L"            '-...............-'            ",
+    const int eye[13][40] = {
+        {0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {0,0,0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0},
+        {0,1,1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,1,0,0,0,0,0},
+        {1,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,1,0,0,0,0},
+        {1,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,1,0,0,0,0},
+        {1,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,1,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
+        {0,1,1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0,0},
+        {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0},
+        {0,0,0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     };
-    const wchar_t* eye_blink[] = {
-        L"            .-''''''''''''''-.            ",
-        L"          .'                   '.          ",
-        L"         /                       \\         ",
-        L"        /                         \\        ",
-        L"       /       _____________       \\       ",
-        L"      |       |             |       |      ",
-        L"      |       |             |       |      ",
-        L"      |       |             |       |      ",
-        L"       \\       -------------       /       ",
-        L"        \\                         /        ",
-        L"         \\                       /         ",
-        L"          '.                   .'          ",
-        L"            '-...............-'            ",
-    };
-    const wchar_t** src = (frame % 6 == 5) ? eye_blink : eye_open;
-    int baseY = 6;
-    for (int i = 0; i < 13; ++i) {
-        Gotoxy(8, baseY + i);
-        std::wcout << src[i];
+
+    int baseY = 5;
+    for (int y = 0; y < 13; ++y) {
+        Gotoxy(6, baseY + y);
+        for (int x = 0; x < 40; ++x) {
+            int v = eye[y][x];
+            if (v == 0) {
+                std::wcout << L" ";
+            } else if (v == 1) {
+                std::wcout << L"\u2588";
+            } else if (v == 2) {
+                std::wcout << L"\u2592";
+            } else {
+                if (frame % 6 == 5) {
+                    std::wcout << L"\u2592";
+                } else {
+                    std::wcout << L"\u2588";
+                }
+            }
+        }
     }
 }
 
 void RunConsoleScene() {
     SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
     _setmode(_fileno(stdout), _O_U8TEXT);
 
     HWND con = GetConsoleWindow();
-    SetWindowPos(con, HWND_TOP, 100, 100, 800, 600, 0);
+    SetWindowPos(con, HWND_TOP, 100, 100, 900, 700, 0);
 
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.Y = 18;
-    wcscpy_s(cfi.FaceName, L"Lucida Console");
+    cfi.dwFontSize.Y = 22;
+    cfi.dwFontSize.X = 11;
+    wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(GetStdHandle(STD_OUTPUT_HANDLE), FALSE, &cfi);
 
-    // чёрный фон
     system("color 0F");
     system("cls");
 
     SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    TypeText(L"...обнаружена активность...", 5, 2, 60);
-    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+    TypeText(L"...обнаружена активность...", 3, 2, 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    // красный фон
     system("color 4F");
     system("cls");
 
     SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
                     | FOREGROUND_INTENSITY);
-    TypeText(L">>> ВАС ЗАМЕТИЛИ <<<", 12, 3, 100);
+    TypeText(L">>> ВАС ЗАМЕТИЛИ <<<", 8, 3, 70);
 
-    for (int i = 0; i < 40; ++i) {
+    for (int i = 0; i < 15; ++i) {
         DrawEye(i);
         std::this_thread::sleep_for(std::chrono::milliseconds(180));
     }
 }
 
-// ── локер ───────────────────────────────────────────────────
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
