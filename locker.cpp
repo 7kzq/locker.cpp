@@ -1,5 +1,7 @@
 // language: C++, file: locker.cpp, target: Windows 11 x64, MSVC
-// WinLocker — fullscreen password lock, exits: password or ctrl+alt+del
+// WinLocker — fullscreen password lock
+// blocks: Alt+F4, Esc, Alt+Tab, Win+*, Ctrl+Shift+Esc
+// exits: password "123" or Ctrl+Alt+Del
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
@@ -19,11 +21,48 @@ unsigned long long fnv1a(const std::wstring& s) {
 
 std::wstring g_input;
 bool g_unlocked = false;
+HHOOK g_kbHook = nullptr;
 
 const COLORREF BG     = RGB(0, 0, 0);
 const COLORREF FG     = RGB(255, 255, 255);
 const COLORREF DIM    = RGB(90, 90, 90);
 const COLORREF ACCENT = RGB(200, 30, 30);
+
+// ── глобальный хук клавиатуры ───────────────────────────────
+// глушим системные комбинации, которые иначе снесут локер
+LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && !g_unlocked) {
+        auto* kb = (KBDLLHOOKSTRUCT*)lp;
+        DWORD vk = kb->vkCode;
+
+        // Win-хоткеи: Win, Win+D, Win+M, Win+L, Win+Tab, Win+R, Win+E и т.д.
+        if (vk == VK_LWIN || vk == VK_RWIN) return 1;
+
+        // Alt+Tab
+        if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
+
+        // Alt+F4
+        if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
+
+        // Alt+Esc
+        if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
+
+        // Esc — одиночный
+        if (vk == VK_ESCAPE) return 1;
+
+        // Ctrl+Shift+Esc (диспетчер задач)
+        if (vk == VK_ESCAPE
+            && (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+            && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) return 1;
+
+        // Ctrl+Esc (меню Пуск)
+        if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) return 1;
+
+        // F11
+        if (vk == VK_F11) return 1;
+    }
+    return CallNextHookEx(g_kbHook, code, wp, lp);
+}
 
 void DrawTextEx(HDC dc, int x, int y, const wchar_t* s, COLORREF c,
                 int size, bool center, int winW) {
@@ -69,8 +108,8 @@ void Paint(HWND hwnd) {
 
     DrawTextEx(dc, 0, 480, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
 
-    DrawTextEx(dc, 0, 560, L"ctrl+alt+del to force close",
-               RGB(60, 60, 60), 16, true, rc.right);
+    DrawTextEx(dc, 0, 580, L"ctrl+alt+del to force close",
+               RGB(50, 50, 50), 16, true, rc.right);
 
     EndPaint(hwnd, &ps);
 }
@@ -79,12 +118,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: Paint(hwnd); return 0;
 
+    case WM_KEYDOWN:
+        if (wp == VK_F4 && (GetKeyState(VK_MENU) & 0x8000)) return 0;
+        if (wp == VK_ESCAPE) return 0;
+        return 0;
+
+    case WM_SYSCOMMAND:
+        // блокируем SC_CLOSE (Alt+F4), SC_MINIMIZE, SC_TASKLIST
+        if ((wp & 0xFFF0) == SC_CLOSE) return 0;
+        if ((wp & 0xFFF0) == SC_MINIMIZE) return 0;
+        if ((wp & 0xFFF0) == SC_TASKLIST) return 0;
+        if ((wp & 0xFFF0) == SC_KEYMENU) return 0;
+        return 0;
+
+    case WM_CLOSE:
+        return 0;
+
     case WM_CHAR: {
         if (wp == VK_BACK) {
             if (!g_input.empty()) g_input.pop_back();
         } else if (wp == VK_RETURN) {
             if (fnv1a(g_input) == PASS_HASH) {
                 g_unlocked = true;
+                UnhookWindowsHookEx(g_kbHook);
                 PostQuitMessage(0);
             } else {
                 g_input.clear();
@@ -97,7 +153,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
 
-    case WM_DESTROY: PostQuitMessage(0); return 0;
+    case WM_DESTROY:
+        UnhookWindowsHookEx(g_kbHook);
+        PostQuitMessage(0);
+        return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
@@ -124,6 +183,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);
+
+    // глобальный хук клавиатуры — глушит Win-хоткеи и системные комбинации
+    g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, KbHook, hi, 0);
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0)) {
