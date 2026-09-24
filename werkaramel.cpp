@@ -1,13 +1,10 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — red console scare + fullscreen locker, no sound
+// werkaramel — fast glitch + banner + winlocker
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
 #include <thread>
 #include <chrono>
-#include <iostream>
-#include <io.h>
-#include <fcntl.h>
 
 const std::wstring PASS = L"123";
 
@@ -15,100 +12,104 @@ std::wstring g_input;
 bool g_unlocked = false;
 bool g_wrong = false;
 HHOOK g_kbHook = nullptr;
+HANDLE g_hOut = INVALID_HANDLE_VALUE;
 
 const COLORREF L_BG     = RGB(0, 0, 0);
 const COLORREF L_FG     = RGB(255, 255, 255);
 const COLORREF L_DIM    = RGB(90, 90, 90);
 const COLORREF L_ACCENT = RGB(200, 30, 30);
 
+void WOut(const std::wstring& s) {
+    DWORD written = 0;
+    WriteConsoleW(g_hOut, s.c_str(), (DWORD)s.size(), &written, nullptr);
+}
+
 void SetConsoleColor(WORD attr) {
-    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), attr);
+    SetConsoleTextAttribute(g_hOut, attr);
 }
 
 void Gotoxy(int x, int y) {
     COORD c{ (SHORT)x, (SHORT)y };
-    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    SetConsoleCursorPosition(g_hOut, c);
 }
 
-void TypeText(const std::wstring& s, int x, int y, int delay_ms = 80) {
-    Gotoxy(x, y);
-    for (wchar_t c : s) {
-        std::wcout << c;
-        std::wcout.flush();
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+void DrawBanner() {
+    const wchar_t* banner[] = {
+        L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
+        L"██║    ██║██╔════╝██╔══██╗██║ ██╔╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██╔════╝██║",
+        L"██║ █╗ ██║█████╗  ██████╔╝█████╔╝ ███████║██████╔╝███████║██╔████╔██║█████╗  ██║",
+        L"██║███╗██║██╔══╝  ██╔══██╗██╔═██╗ ██╔══██║██╔══██╗██╔══██║██║╚██╔╝██║██╔══╝  ██║",
+        L"╚███╔███╔╝███████╗██║  ██║██║  ██╗██║  ██║██║  ██║██║  ██║██║ ╚═╝ ██║███████╗███████╗",
+        L" ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝",
+    };
+
+    SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    int baseY = 8;
+    for (int i = 0; i < 6; ++i) {
+        Gotoxy(4, baseY + i);
+        WOut(banner[i]);
     }
+
+    SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    Gotoxy(4, baseY + 8);
+    WOut(L"╔═════════════════════════════════════════════════════════════════════════════╗");
+    Gotoxy(4, baseY + 9);
+    WOut(L"║                          W I N L O C K E R                                  ║");
+    Gotoxy(4, baseY + 10);
+    WOut(L"╚═════════════════════════════════════════════════════════════════════════════╝");
 }
 
-void DrawEye(int frame) {
-    const wchar_t* eye_open[] = {
-        L"            .-''''''''''''''-.            ",
-        L"          .'                   '.          ",
-        L"         /                       \\         ",
-        L"        /     .---.     .---.     \\        ",
-        L"       /     /     \\   /     \\     \\       ",
-        L"      |     |  .-.  | |  .-.  |     |      ",
-        L"      |     | ( @ ) | | ( @ ) |     |      ",
-        L"      |     |  '-'  | |  '-'  |     |      ",
-        L"       \\     \\     /   \\     /     /       ",
-        L"        \\     '---'     '---'     /        ",
-        L"         \\                       /         ",
-        L"          '.                   .'          ",
-        L"            '-...............-'            ",
-    };
-    const wchar_t* eye_blink[] = {
-        L"            .-''''''''''''''-.            ",
-        L"          .'                   '.          ",
-        L"         /                       \\         ",
-        L"        /                         \\        ",
-        L"       /       _____________       \\       ",
-        L"      |       |             |       |      ",
-        L"      |       |             |       |      ",
-        L"      |       |             |       |      ",
-        L"       \\       -------------       /       ",
-        L"        \\                         /        ",
-        L"         \\                       /         ",
-        L"          '.                   .'          ",
-        L"            '-...............-'            ",
-    };
-    const wchar_t** src = (frame % 6 == 5) ? eye_blink : eye_open;
-    int baseY = 6;
-    for (int i = 0; i < 13; ++i) {
-        Gotoxy(8, baseY + i);
-        std::wcout << src[i];
+void FastGlitch() {
+    for (int i = 0; i < 3; ++i) {
+        system("color 4F");
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        system("color 0F");
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
     }
 }
 
 void RunConsoleScene() {
     SetConsoleOutputCP(CP_UTF8);
-    _setmode(_fileno(stdout), _O_U8TEXT);
+    SetConsoleCP(CP_UTF8);
 
     HWND con = GetConsoleWindow();
-    SetWindowPos(con, HWND_TOP, 100, 100, 800, 600, 0);
+    SetWindowPos(con, HWND_TOP, 100, 100, 1000, 800, 0);
 
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
     cfi.dwFontSize.Y = 18;
-    wcscpy_s(cfi.FaceName, L"Lucida Console");
-    SetCurrentConsoleFontEx(GetStdHandle(STD_OUTPUT_HANDLE), FALSE, &cfi);
+    cfi.dwFontSize.X = 9;
+    wcscpy_s(cfi.FaceName, L"Consolas");
+    SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
+    // чёрный фон
     system("color 0F");
     system("cls");
 
-    SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    TypeText(L"...обнаружена активность...", 5, 2, 60);
-    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+    // 1. быстрый глитч
+    FastGlitch();
 
+    // 2. вас заметили
     system("color 4F");
     system("cls");
 
     SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
                     | FOREGROUND_INTENSITY);
-    TypeText(L">>> ВАС ЗАМЕТИЛИ <<<", 12, 3, 100);
+    Gotoxy(8, 3);
+    WOut(L">>> ВАС ЗАМЕТИЛИ <<<");
 
-    for (int i = 0; i < 40; ++i) {
-        DrawEye(i);
-        std::this_thread::sleep_for(std::chrono::milliseconds(180));
-    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+
+    // 3. снова быстрый глитч
+    FastGlitch();
+
+    // 4. баннер
+    system("color 0F");
+    system("cls");
+    DrawBanner();
+
+    // 5. пауза 1 секунда
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
@@ -256,6 +257,7 @@ void RunLocker(HINSTANCE hi) {
 }
 
 int wmain() {
+    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     ShowWindow(GetConsoleWindow(), SW_SHOW);
     RunConsoleScene();
     HINSTANCE hi = GetModuleHandleW(nullptr);
