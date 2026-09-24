@@ -1,0 +1,17 @@
+name: build locker
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: build locker.exe
+        shell: cmd
+        run: cl /std:c++20 /O2 /EHsc /DUNICODE /D_UNICODE locker.cpp /link user32.lib gdi32.lib /out:locker.exe /SUBSYSTEM:WINDOWS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: locker
+          path: locker.exe
