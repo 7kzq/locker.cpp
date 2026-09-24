@@ -5,10 +5,12 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <iostream>
+#include <io.h>
+#include <fcntl.h>
 
 const std::wstring PASS = L"123";
 
-// ── глобалы локера ──────────────────────────────────────────
 std::wstring g_input;
 bool g_unlocked = false;
 bool g_wrong = false;
@@ -19,7 +21,6 @@ const COLORREF L_FG     = RGB(255, 255, 255);
 const COLORREF L_DIM    = RGB(90, 90, 90);
 const COLORREF L_ACCENT = RGB(200, 30, 30);
 
-// ── консоль ─────────────────────────────────────────────────
 void SetConsoleColor(WORD attr) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), attr);
 }
@@ -39,7 +40,6 @@ void TypeText(const std::wstring& s, int x, int y, int delay_ms = 80) {
 }
 
 void DrawEye(int frame) {
-    // два кадра — открытый и моргающий
     const wchar_t* eye_open[] = {
         L"          .-''''''''''-.          ",
         L"        .'               '.        ",
@@ -66,7 +66,6 @@ void DrawEye(int frame) {
         L"        '.               .'        ",
         L"          '-...........-'          ",
     };
-
     const wchar_t** src = (frame % 6 == 5) ? eye_blink : eye_open;
     int baseY = 6;
     for (int i = 0; i < 11; ++i) {
@@ -76,7 +75,6 @@ void DrawEye(int frame) {
 }
 
 void RunConsoleScene() {
-    // переключаем консоль в UTF-16
     SetConsoleOutputCP(CP_UTF8);
     _setmode(_fileno(stdout), _O_U8TEXT);
 
@@ -91,7 +89,7 @@ void RunConsoleScene() {
     TypeText(L"  ...обнаружена активность...", 5, 2, 60);
     std::this_thread::sleep_for(std::chrono::milliseconds(700));
 
-    // красный фон, белый текст
+    // красный фон
     system("color 4F");
     system("cls");
 
@@ -99,14 +97,12 @@ void RunConsoleScene() {
                     | FOREGROUND_INTENSITY);
     TypeText(L"  >>> ВАС ЗАМЕТИЛИ <<<", 8, 3, 100);
 
-    // мигающий глаз
     for (int i = 0; i < 40; ++i) {
         DrawEye(i);
         std::this_thread::sleep_for(std::chrono::milliseconds(180));
     }
 }
 
-// ── локер ───────────────────────────────────────────────────
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
@@ -236,7 +232,6 @@ void RunLocker(HINSTANCE hi) {
         WS_POPUP, 0, 0, sw, sh,
         nullptr, nullptr, hi, nullptr);
 
-    // скрываем консоль
     ShowWindow(GetConsoleWindow(), SW_HIDE);
 
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
@@ -253,15 +248,9 @@ void RunLocker(HINSTANCE hi) {
 }
 
 int wmain() {
-    // показываем консоль
     ShowWindow(GetConsoleWindow(), SW_SHOW);
-
-    // сцена в консоли
     RunConsoleScene();
-
-    // запускаем локер
     HINSTANCE hi = GetModuleHandleW(nullptr);
     RunLocker(hi);
-
     return 0;
 }
