@@ -1,23 +1,13 @@
 // language: C++, file: locker.cpp, target: Windows 11 x64, MSVC
 // WinLocker — fullscreen password lock
 // blocks: Alt+F4, Esc, Alt+Tab, Win+*, Ctrl+Shift+Esc
-// exits: password "123" or Ctrl+Alt+Del
+// exits: password "1" or Ctrl+Alt+Del
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
 
-const unsigned long long PASS_HASH = 0xa72a9d1e3f0f5b07ULL;  // "123"
-
-unsigned long long fnv1a(const std::wstring& s) {
-    unsigned long long h = 0xcbf29ce484222325ULL;
-    for (wchar_t c : s) {
-        h ^= (unsigned char)(c & 0xFF);
-        h *= 0x100000001b3ULL;
-        h ^= (unsigned char)((c >> 8) & 0xFF);
-        h *= 0x100000001b3ULL;
-    }
-    return h;
-}
+// пароль открытой строкой
+const std::wstring PASS = L"1";
 
 std::wstring g_input;
 bool g_unlocked = false;
@@ -121,7 +111,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == VK_BACK) {
             if (!g_input.empty()) g_input.pop_back();
         } else if (wp == VK_RETURN) {
-            if (fnv1a(g_input) == PASS_HASH) {
+            if (g_input == PASS) {
                 g_unlocked = true;
                 UnhookWindowsHookEx(g_kbHook);
                 PostQuitMessage(0);
