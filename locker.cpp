@@ -1,10 +1,10 @@
 // language: C++, file: locker.cpp, target: Windows 11 x64, MSVC
-// WinLocker TEST — fullscreen password lock, panic exit, safe
+// WinLocker — fullscreen password lock, exits: password or ctrl+alt+del
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
 
-const unsigned long long PASS_HASH = 0xa72a9d1e3f0f5b07ULL;
+const unsigned long long PASS_HASH = 0xa72a9d1e3f0f5b07ULL;  // "123"
 
 unsigned long long fnv1a(const std::wstring& s) {
     unsigned long long h = 0xcbf29ce484222325ULL;
@@ -19,14 +19,11 @@ unsigned long long fnv1a(const std::wstring& s) {
 
 std::wstring g_input;
 bool g_unlocked = false;
-RECT g_panicBtn{};
 
 const COLORREF BG     = RGB(0, 0, 0);
 const COLORREF FG     = RGB(255, 255, 255);
 const COLORREF DIM    = RGB(90, 90, 90);
 const COLORREF ACCENT = RGB(200, 30, 30);
-const COLORREF PANIC  = RGB(60, 60, 60);
-const COLORREF PANIC_HOT = RGB(120, 40, 40);
 
 void DrawTextEx(HDC dc, int x, int y, const wchar_t* s, COLORREF c,
                 int size, bool center, int winW) {
@@ -58,31 +55,21 @@ void Paint(HWND hwnd) {
 
     int cx = rc.right / 2;
 
-    DrawTextEx(dc, 0, 140, L"SYSTEM LOCKED", ACCENT, 72, true, rc.right);
-    DrawTextEx(dc, 0, 240, L"enter password to continue", DIM, 22, true, rc.right);
+    DrawTextEx(dc, 0, 180, L"SYSTEM LOCKED", ACCENT, 72, true, rc.right);
+    DrawTextEx(dc, 0, 280, L"enter password to continue", DIM, 22, true, rc.right);
 
-    RECT box{ cx - 250, 340, cx + 250, 400 };
+    RECT box{ cx - 250, 380, cx + 250, 440 };
     HBRUSH bf = CreateSolidBrush(RGB(15, 15, 15));
     FillRect(dc, &box, bf);
     DeleteObject(bf);
     FrameRect(dc, &box, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
     std::wstring masked(g_input.size(), L'*');
-    DrawTextEx(dc, cx - 230, 358, masked.c_str(), FG, 26, false, 0);
+    DrawTextEx(dc, cx - 230, 398, masked.c_str(), FG, 26, false, 0);
 
-    DrawTextEx(dc, 0, 440, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
+    DrawTextEx(dc, 0, 480, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
 
-    g_panicBtn = { cx - 150, 520, cx + 150, 570 };
-    POINT mp; GetCursorPos(&mp); ScreenToClient(hwnd, &mp);
-    bool hot = PtInRect(&g_panicBtn, mp) != 0;
-    HBRUSH pb = CreateSolidBrush(hot ? PANIC_HOT : PANIC);
-    FillRect(dc, &g_panicBtn, pb);
-    DeleteObject(pb);
-    FrameRect(dc, &g_panicBtn, (HBRUSH)GetStockObject(WHITE_BRUSH));
-    DrawTextEx(dc, 0, 532, L"PANIC EXIT", FG, 22, true, rc.right);
-
-    DrawTextEx(dc, 0, 620,
-               L"exit: password / panic / ctrl+alt+del",
+    DrawTextEx(dc, 0, 560, L"ctrl+alt+del to force close",
                RGB(60, 60, 60), 16, true, rc.right);
 
     EndPaint(hwnd, &ps);
@@ -91,19 +78,6 @@ void Paint(HWND hwnd) {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: Paint(hwnd); return 0;
-
-    case WM_MOUSEMOVE:
-        InvalidateRect(hwnd, nullptr, FALSE);
-        return 0;
-
-    case WM_LBUTTONDOWN: {
-        POINT p{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
-        if (PtInRect(&g_panicBtn, p)) {
-            g_unlocked = true;
-            PostQuitMessage(0);
-        }
-        return 0;
-    }
 
     case WM_CHAR: {
         if (wp == VK_BACK) {
