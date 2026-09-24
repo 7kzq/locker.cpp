@@ -8,6 +8,7 @@ const std::wstring PASS = L"123";
 
 std::wstring g_input;
 bool g_unlocked = false;
+bool g_wrong = false;
 HHOOK g_kbHook = nullptr;
 
 const COLORREF BG     = RGB(0, 0, 0);
@@ -73,9 +74,11 @@ void Paint(HWND hwnd) {
     std::wstring masked(g_input.size(), L'*');
     DrawTextEx(dc, cx - 230, 418, masked.c_str(), FG, 26, false, 0);
 
-    DrawTextEx(dc, 0, 500, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
-    DrawTextEx(dc, 0, 580, L"ctrl+alt+del to force close",
-               RGB(50, 50, 50), 16, true, rc.right);
+    if (g_wrong) {
+        DrawTextEx(dc, 0, 490, L"wrong password", ACCENT, 22, true, rc.right);
+    } else {
+        DrawTextEx(dc, 0, 490, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
+    }
 
     EndPaint(hwnd, &ps);
 }
@@ -101,6 +104,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CHAR: {
         if (wp == VK_BACK) {
             if (!g_input.empty()) g_input.pop_back();
+            g_wrong = false;
         } else if (wp == VK_RETURN) {
             if (g_input == PASS) {
                 g_unlocked = true;
@@ -108,10 +112,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 PostQuitMessage(0);
             } else {
                 g_input.clear();
+                g_wrong = true;
                 MessageBeep(MB_ICONHAND);
             }
         } else if (wp >= 32) {
             g_input.push_back((wchar_t)wp);
+            g_wrong = false;
         }
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
