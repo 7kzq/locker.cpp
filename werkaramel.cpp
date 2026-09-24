@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — fast glitch + banner + winlocker
+// werkaramel — fullscreen locked console + banner + winlocker
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
@@ -13,6 +13,7 @@ bool g_unlocked = false;
 bool g_wrong = false;
 HHOOK g_kbHook = nullptr;
 HANDLE g_hOut = INVALID_HANDLE_VALUE;
+HWND g_hCon = nullptr;
 
 const COLORREF L_BG     = RGB(0, 0, 0);
 const COLORREF L_FG     = RGB(255, 255, 255);
@@ -24,13 +25,53 @@ void WOut(const std::wstring& s) {
     WriteConsoleW(g_hOut, s.c_str(), (DWORD)s.size(), &written, nullptr);
 }
 
-void SetConsoleColor(WORD attr) {
+void SetColor(WORD attr) {
     SetConsoleTextAttribute(g_hOut, attr);
+}
+
+void ClearScreen(WORD bg_attr) {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    DWORD cells, written;
+    COORD home = {0, 0};
+    GetConsoleScreenBufferInfo(g_hOut, &csbi);
+    cells = csbi.dwSize.X * csbi.dwSize.Y;
+    FillConsoleOutputCharacterW(g_hOut, L' ', cells, home, &written);
+    FillConsoleOutputAttribute(g_hOut, bg_attr, cells, home, &written);
+    SetConsoleCursorPosition(g_hOut, home);
 }
 
 void Gotoxy(int x, int y) {
     COORD c{ (SHORT)x, (SHORT)y };
     SetConsoleCursorPosition(g_hOut, c);
+}
+
+BOOL WINAPI CtrlHandler(DWORD type) {
+    if (type == CTRL_C_EVENT || type == CTRL_CLOSE_EVENT ||
+        type == CTRL_LOGOFF_EVENT || type == CTRL_SHUTDOWN_EVENT) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void LockConsoleWindow() {
+    LONG style = GetWindowLong(g_hCon, GWL_STYLE);
+    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX |
+               WS_MAXIMIZEBOX | WS_SYSMENU);
+    SetWindowLong(g_hCon, GWL_STYLE, style);
+
+    HMENU menu = GetSystemMenu(g_hCon, FALSE);
+    if (menu) {
+        DeleteMenu(menu, SC_CLOSE, MF_BYCOMMAND);
+        DeleteMenu(menu, SC_MINIMIZE, MF_BYCOMMAND);
+        DeleteMenu(menu, SC_MAXIMIZE, MF_BYCOMMAND);
+    }
+
+    int sw = GetSystemMetrics(SM_CXSCREEN);
+    int sh = GetSystemMetrics(SM_CYSCREEN);
+    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh,
+                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+    SetConsoleCtrlHandler(CtrlHandler, TRUE);
 }
 
 void DrawBanner() {
@@ -43,28 +84,28 @@ void DrawBanner() {
         L" ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝",
     };
 
-    SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    int baseY = 8;
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    int baseY = 10;
     for (int i = 0; i < 6; ++i) {
-        Gotoxy(4, baseY + i);
+        Gotoxy(6, baseY + i);
         WOut(banner[i]);
     }
 
-    SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    Gotoxy(4, baseY + 8);
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    Gotoxy(6, baseY + 8);
     WOut(L"╔═════════════════════════════════════════════════════════════════════════════╗");
-    Gotoxy(4, baseY + 9);
+    Gotoxy(6, baseY + 9);
     WOut(L"║                          W I N L O C K E R                                  ║");
-    Gotoxy(4, baseY + 10);
+    Gotoxy(6, baseY + 10);
     WOut(L"╚═════════════════════════════════════════════════════════════════════════════╝");
 }
 
-void FastGlitch() {
+void GlitchBurst() {
     for (int i = 0; i < 3; ++i) {
-        system("color 4F");
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
-        system("color 0F");
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
+        std::this_thread::sleep_for(std::chrono::milliseconds(70));
+        ClearScreen(0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(70));
     }
 }
 
@@ -72,44 +113,32 @@ void RunConsoleScene() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
-    HWND con = GetConsoleWindow();
-    SetWindowPos(con, HWND_TOP, 100, 100, 1000, 800, 0);
+    LockConsoleWindow();
 
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.Y = 18;
-    cfi.dwFontSize.X = 9;
+    cfi.dwFontSize.Y = 20;
+    cfi.dwFontSize.X = 10;
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
-    // чёрный фон
-    system("color 0F");
-    system("cls");
+    ClearScreen(0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    // 1. быстрый глитч
-    FastGlitch();
+    GlitchBurst();
 
-    // 2. вас заметили
-    system("color 4F");
-    system("cls");
-
-    SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
-                    | FOREGROUND_INTENSITY);
-    Gotoxy(8, 3);
+    ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
+    SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
+             | FOREGROUND_INTENSITY);
+    Gotoxy(30, 10);
     WOut(L">>> ВАС ЗАМЕТИЛИ <<<");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    GlitchBurst();
 
-    // 3. снова быстрый глитч
-    FastGlitch();
-
-    // 4. баннер
-    system("color 0F");
-    system("cls");
+    ClearScreen(0);
     DrawBanner();
-
-    // 5. пауза 1 секунда
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2800));
 }
 
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
@@ -241,7 +270,7 @@ void RunLocker(HINSTANCE hi) {
         WS_POPUP, 0, 0, sw, sh,
         nullptr, nullptr, hi, nullptr);
 
-    ShowWindow(GetConsoleWindow(), SW_HIDE);
+    ShowWindow(g_hCon, SW_HIDE);
 
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     SetForegroundWindow(hwnd);
@@ -258,7 +287,8 @@ void RunLocker(HINSTANCE hi) {
 
 int wmain() {
     g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    ShowWindow(GetConsoleWindow(), SW_SHOW);
+    g_hCon = GetConsoleWindow();
+    ShowWindow(g_hCon, SW_SHOW);
     RunConsoleScene();
     HINSTANCE hi = GetModuleHandleW(nullptr);
     RunLocker(hi);
