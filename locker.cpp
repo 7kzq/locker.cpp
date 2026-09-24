@@ -1,13 +1,10 @@
 // language: C++, file: locker.cpp, target: Windows 11 x64, MSVC
-// WinLocker — fullscreen password lock
-// blocks: Alt+F4, Esc, Alt+Tab, Win+*, Ctrl+Shift+Esc
-// exits: password "1" or Ctrl+Alt+Del
+// WinLocker — fullscreen password lock, password: 123
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
 
-// пароль открытой строкой
-const std::wstring PASS = L"1";
+const std::wstring PASS = L"123";
 
 std::wstring g_input;
 bool g_unlocked = false;
@@ -22,14 +19,10 @@ LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
         DWORD vk = kb->vkCode;
-
         if (vk == VK_LWIN || vk == VK_RWIN) return 1;
         if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
         if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
         if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-        if (vk == VK_ESCAPE
-            && (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-            && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) return 1;
         if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) return 1;
         if (vk == VK_ESCAPE) return 1;
         if (vk == VK_F11) return 1;
@@ -81,7 +74,6 @@ void Paint(HWND hwnd) {
     DrawTextEx(dc, cx - 230, 418, masked.c_str(), FG, 26, false, 0);
 
     DrawTextEx(dc, 0, 500, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
-
     DrawTextEx(dc, 0, 580, L"ctrl+alt+del to force close",
                RGB(50, 50, 50), 16, true, rc.right);
 
@@ -104,8 +96,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if ((wp & 0xFFF0) == SC_KEYMENU) return 0;
         return 0;
 
-    case WM_CLOSE:
-        return 0;
+    case WM_CLOSE: return 0;
 
     case WM_CHAR: {
         if (wp == VK_BACK) {
@@ -147,10 +138,8 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     int sh = GetSystemMetrics(SM_CYSCREEN);
 
     HWND hwnd = CreateWindowExW(
-        WS_EX_TOPMOST,
-        L"winlocker", L"System Locked",
-        WS_POPUP,
-        0, 0, sw, sh,
+        WS_EX_TOPMOST, L"winlocker", L"System Locked",
+        WS_POPUP, 0, 0, sw, sh,
         nullptr, nullptr, hi, nullptr);
 
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
