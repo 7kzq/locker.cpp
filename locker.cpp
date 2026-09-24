@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — red console scare + fullscreen locker
+// werkaramel — red console scare + fullscreen locker, no sound
 #include <windows.h>
 #include <windowsx.h>
 #include <string>
@@ -21,6 +21,7 @@ const COLORREF L_FG     = RGB(255, 255, 255);
 const COLORREF L_DIM    = RGB(90, 90, 90);
 const COLORREF L_ACCENT = RGB(200, 30, 30);
 
+// ── консоль ─────────────────────────────────────────────────
 void SetConsoleColor(WORD attr) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), attr);
 }
@@ -41,34 +42,38 @@ void TypeText(const std::wstring& s, int x, int y, int delay_ms = 80) {
 
 void DrawEye(int frame) {
     const wchar_t* eye_open[] = {
-        L"          .-''''''''''-.          ",
-        L"        .'               '.        ",
-        L"       /                   \\       ",
-        L"      /     .-.     .-.     \\      ",
-        L"     |     /   \\   /   \\     |     ",
-        L"     |    | (O) | | (O) |    |     ",
-        L"     |     \\   /   \\   /     |     ",
-        L"      \\     '-'     '-'     /      ",
-        L"       \\                   /       ",
-        L"        '.               .'        ",
-        L"          '-...........-'          ",
+        L"            .-''''''''''''''-.            ",
+        L"          .'                   '.          ",
+        L"         /                       \\         ",
+        L"        /     .---.     .---.     \\        ",
+        L"       /     /     \\   /     \\     \\       ",
+        L"      |     |  .-.  | |  .-.  |     |      ",
+        L"      |     | ( @ ) | | ( @ ) |     |      ",
+        L"      |     |  '-'  | |  '-'  |     |      ",
+        L"       \\     \\     /   \\     /     /       ",
+        L"        \\     '---'     '---'     /        ",
+        L"         \\                       /         ",
+        L"          '.                   .'          ",
+        L"            '-...............-'            ",
     };
     const wchar_t* eye_blink[] = {
-        L"          .-''''''''''-.          ",
-        L"        .'               '.        ",
-        L"       /                   \\       ",
-        L"      /                     \\      ",
-        L"     |     ___________       |     ",
-        L"     |    |           |      |     ",
-        L"     |     -----------       |     ",
-        L"      \\                     /      ",
-        L"       \\                   /       ",
-        L"        '.               .'        ",
-        L"          '-...........-'          ",
+        L"            .-''''''''''''''-.            ",
+        L"          .'                   '.          ",
+        L"         /                       \\         ",
+        L"        /                         \\        ",
+        L"       /       _____________       \\       ",
+        L"      |       |             |       |      ",
+        L"      |       |             |       |      ",
+        L"      |       |             |       |      ",
+        L"       \\       -------------       /       ",
+        L"        \\                         /        ",
+        L"         \\                       /         ",
+        L"          '.                   .'          ",
+        L"            '-...............-'            ",
     };
     const wchar_t** src = (frame % 6 == 5) ? eye_blink : eye_open;
     int baseY = 6;
-    for (int i = 0; i < 11; ++i) {
+    for (int i = 0; i < 13; ++i) {
         Gotoxy(8, baseY + i);
         std::wcout << src[i];
     }
@@ -79,14 +84,20 @@ void RunConsoleScene() {
     _setmode(_fileno(stdout), _O_U8TEXT);
 
     HWND con = GetConsoleWindow();
-    SetWindowPos(con, HWND_TOP, 100, 100, 700, 500, 0);
+    SetWindowPos(con, HWND_TOP, 100, 100, 800, 600, 0);
+
+    CONSOLE_FONT_INFOEX cfi{};
+    cfi.cbSize = sizeof(cfi);
+    cfi.dwFontSize.Y = 18;
+    wcscpy_s(cfi.FaceName, L"Lucida Console");
+    SetCurrentConsoleFontEx(GetStdHandle(STD_OUTPUT_HANDLE), FALSE, &cfi);
 
     // чёрный фон
     system("color 0F");
     system("cls");
 
     SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    TypeText(L"  ...обнаружена активность...", 5, 2, 60);
+    TypeText(L"...обнаружена активность...", 5, 2, 60);
     std::this_thread::sleep_for(std::chrono::milliseconds(700));
 
     // красный фон
@@ -95,7 +106,7 @@ void RunConsoleScene() {
 
     SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
                     | FOREGROUND_INTENSITY);
-    TypeText(L"  >>> ВАС ЗАМЕТИЛИ <<<", 8, 3, 100);
+    TypeText(L">>> ВАС ЗАМЕТИЛИ <<<", 12, 3, 100);
 
     for (int i = 0; i < 40; ++i) {
         DrawEye(i);
@@ -103,6 +114,7 @@ void RunConsoleScene() {
     }
 }
 
+// ── локер ───────────────────────────────────────────────────
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
