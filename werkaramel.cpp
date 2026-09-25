@@ -109,11 +109,23 @@ void LaunchSelf(const std::wstring& arg) {
     wchar_t exePath[MAX_PATH]{};
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     std::wstring cmd = L"\"" + std::wstring(exePath) + L"\" " + arg;
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOWNORMAL;
+
     PROCESS_INFORMATION pi{};
-    if (CreateProcessW(nullptr, &cmd[0], nullptr, nullptr, FALSE, 0,
-                       nullptr, nullptr, &si, &pi)) {
+
+    // CREATE_NEW_CONSOLE — каждому процессу своя консоль
+    if (CreateProcessW(
+            nullptr,
+            &cmd[0],
+            nullptr, nullptr,
+            FALSE,
+            CREATE_NEW_CONSOLE,
+            nullptr, nullptr,
+            &si, &pi)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     }
@@ -147,6 +159,10 @@ void RunRed() {
     SetConsoleCP(CP_UTF8);
     FullscreenConsole();
     LockConsole();
+
+    // повторный разворот через 100мс — на случай если окно свернулось
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    FullscreenConsole();
 
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
@@ -195,6 +211,9 @@ void RunRules() {
     FullscreenConsole();
     LockConsole();
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    FullscreenConsole();
+
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
 
@@ -210,7 +229,6 @@ void RunRules() {
     if (elapsed < 4000)
         std::this_thread::sleep_for(std::chrono::milliseconds(4000 - elapsed));
 
-    // ждём 2 секунды и переходим к меню
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     LaunchSelf(L"--menu");
@@ -281,6 +299,9 @@ void RunMenu() {
 
     FullscreenConsole();
     LockConsole();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    FullscreenConsole();
 
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
                                  GetModuleHandleW(nullptr), 0);
