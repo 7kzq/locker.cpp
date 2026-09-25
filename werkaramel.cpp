@@ -160,7 +160,6 @@ void PhaseRed() {
         WOut(DEATH[i]);
     }
 
-    // ВАС ЗАМЕТИЛИ под Death
     std::wstring txt = L"В А С   З А М Е Т И Л И";
     int txtY = startY + lines + 2;
     if (txtY > rows - 1) txtY = rows - 1;
@@ -246,7 +245,7 @@ void PhaseMenu() {
             continue;
         }
         if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown) continue;
-        wchar_t c = rec.Event.EventType ? rec.Event.KeyEvent.uChar.UnicodeChar : 0;
+        wchar_t c = rec.Event.KeyEvent.uChar.UnicodeChar;
         if (c == 0) continue;
 
         if (c >= L'0' && c <= L'9') { g_input += c; PrintMenu(); }
