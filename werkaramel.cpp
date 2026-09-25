@@ -27,6 +27,12 @@ int RandInt(int lo, int hi) {
     return d(g_rng);
 }
 
+// ── forward declarations ────────────────────────────────────
+void WOut(const std::wstring& s);
+void SetColor(WORD attr);
+void Gotoxy(int x, int y);
+
+// ── тексты ──────────────────────────────────────────────────
 const std::wstring SCENE_TEXT =
     L"не пытайтесь что-то сделать сейчас. будет хуже.\n"
     L"\n"
@@ -84,7 +90,7 @@ const std::wstring TIMEOUT_SCARE =
     L"\n"
     L"> БЛОКИРОВКА";
 
-// ── глаз из брайль-символов ─────────────────────────────────
+// ── глаз ────────────────────────────────────────────────────
 const std::wstring EYE_ART =
     L"⠀⠀⠀⠀⠀⠀⠀⣀⣤⣶⣾⣿⣿⣿⣿⣿⣿⣷⣶⣤⣀⠀⠀⠀⠀⠀⠀\n"
     L"⠀⠀⠀⠀⣠⣾⡿⠋⣽⣿⡿⠋⠉⠀⠀⠉⠙⢿⣿⣏⠻⣿⣦⡀⠀⠀⠀\n"
@@ -297,7 +303,6 @@ DWORD WINAPI SceneThread(LPVOID) {
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
-    // ── глаз белым + ВАС ЗАМЕТИЛИ красным, 2 секунды ──
     g_phase = 0;
     ClearScreen();
 
@@ -306,10 +311,8 @@ DWORD WINAPI SceneThread(LPVOID) {
     int cols0 = csbi0.dwSize.X;
     int rows0 = csbi0.dwSize.Y;
 
-    // глаз белый
     PrintEyeCentered(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
 
-    // ВАС ЗАМЕТИЛИ красным под глазом
     SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
     std::wstring m1 = L"ВАС ЗАМЕТИЛИ";
     Gotoxy((cols0 - (int)m1.size()) / 2, rows0 / 2 + 4);
@@ -317,7 +320,6 @@ DWORD WINAPI SceneThread(LPVOID) {
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    // ── красный текст сцены ──
     g_phase = 1;
     ClearScreen();
     auto start = std::chrono::steady_clock::now();
@@ -331,14 +333,12 @@ DWORD WINAPI SceneThread(LPVOID) {
     if (elapsed < 2000)
         std::this_thread::sleep_for(std::chrono::milliseconds(2000 - elapsed));
 
-    // ── глитч ──
     g_phase = 2;
     for (int i = 0; i < 15; ++i) {
         PrintGlitch();
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
     }
 
-    // ── меню ──
     g_phase = 3;
     PrintMenu();
     return 0;
