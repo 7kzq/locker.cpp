@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel - red flash + cmd scene + timeout scare + winlocker
+// werkaramel - eye scene + red text + menu + winlocker
 #include <windows.h>
 #include <shellapi.h>
 #include <string>
@@ -11,18 +11,15 @@ const std::wstring PASS = L"123";
 const std::wstring LOCKER_EXE = L"winlocker.exe";
 
 int g_phase = 0;
-int g_menu_choice = 0;
 std::wstring g_typed;
 size_t g_type_pos = 0;
 std::wstring g_input;
-bool g_wrong = false;
 bool g_unlocked = false;
 bool g_timeout_triggered = false;
 HHOOK g_kbHook = nullptr;
 HANDLE g_hOut = INVALID_HANDLE_VALUE;
 HANDLE g_hIn = INVALID_HANDLE_VALUE;
 HWND g_hCon = nullptr;
-HWND g_hFlash = nullptr;
 std::mt19937 g_rng(std::random_device{}());
 
 int RandInt(int lo, int hi) {
@@ -30,66 +27,90 @@ int RandInt(int lo, int hi) {
     return d(g_rng);
 }
 
-// ── вступительный текст (транслит, без кракозябр) ───────────
 const std::wstring SCENE_TEXT =
-    L"ne pytaytes chto-to sdelat seychas. budet huzhe.\n"
+    L"не пытайтесь что-то сделать сейчас. будет хуже.\n"
     L"\n"
-    L"vy skachali winlocker werkaramel. eto ne igrushka.\n"
-    L"uzhe pozdno. vsyo chto nuzhno - sdelano.\n"
+    L"вы скачали winlocker werkaramel. это не игрушка.\n"
+    L"уже поздно. всё что нужно — сделано.\n"
     L"\n"
-    L"vse vashi dannye skopirovany. paroli, fayly, foto, perepiski.\n"
-    L"vsyo eto uzhe na nashem servere.\n"
+    L"все ваши данные скопированы. пароли, файлы, фото, переписки.\n"
+    L"всё это уже на нашем сервере.\n"
     L"\n"
-    L"ne vyklyuchayte kompyuter. ne trogayte dispetcher zadach.\n"
-    L"ne pytaytes snyat zadachu. sistema otslezhivaet lyubye deystviya.\n"
+    L"не выключайте компьютер. не трогайте диспетчер задач.\n"
+    L"не пытайтесь снять задачу. система отслеживает любые действия.\n"
     L"\n"
-    L"popytka zakryt eto okno = nemedlennaya blokirovka.\n"
-    L"popytka perezagruzit = poterya dannyh navsegda.\n"
+    L"попытка закрыть это окно = немедленная блокировка.\n"
+    L"попытка перезагрузить = потеря данных навсегда.\n"
     L"\n"
-    L"ostavaytes na meste. dalneyshie instrukcii poyavyatsya nizhe.";
+    L"оставайтесь на месте. дальнейшие инструкции появятся ниже.";
 
-// ── страшный текст при таймауте ─────────────────────────────
 const std::wstring TIMEOUT_SCARE =
-    L"> system detected suspicious inactivity\n"
-    L"> bypass attempt registered\n"
-    L"> escalating to phase 2\n"
+    L"> система обнаружила подозрительную неактивность\n"
+    L"> попытка обхода зарегистрирована\n"
+    L"> эскалирование до фазы 2\n"
     L"\n"
-    L"> ransomware module loaded: werka_crypt_v3\n"
-    L"> encryption key generated: 0x7F3A9C2E...\n"
-    L"> scanning C:\\Users\\ for sensitive files\n"
-    L"> indexing documents, photos, credentials\n"
-    L"> indexed: 14,847 files / 6.2 GB\n"
-    L"> uploading to remote server: 194.62.xx.xx\n"
-    L"> upload complete. 100%\n"
+    L"> загружен модуль шифрования: werka_crypt_v3\n"
+    L"> ключ шифрования сгенерирован: 0x7F3A9C2E...\n"
+    L"> сканирование C:\\Users\\ на секретные файлы\n"
+    L"> индексация документов, фото, паролей\n"
+    L"> проиндексировано: 14,847 файлов / 6.2 GB\n"
+    L"> загрузка на удаленный сервер: 194.62.xx.xx\n"
+    L"> загрузка завершена. 100%\n"
     L"\n"
-    L"> disabling task manager\n"
-    L"> disabling system restore\n"
-    L"> locking bootloader\n"
-    L"> recording webcam\n"
-    L"> logging keystrokes\n"
-    L"> capturing clipboard\n"
-    L"> dumping browser passwords\n"
-    L"> stealing crypto wallets\n"
-    L"> accessing telegram sessions\n"
-    L"> exporting contacts\n"
+    L"> отключение диспетчера задач\n"
+    L"> отключение восстановления системы\n"
+    L"> блокировка загрузчика\n"
+    L"> запись с веб-камеры\n"
+    L"> перехват нажатий клавиш\n"
+    L"> захват буфера обмена\n"
+    L"> копирование паролей браузера\n"
+    L"> кража крипто-кошельков\n"
+    L"> доступ к сессиям telegram\n"
+    L"> экспорт контактов\n"
     L"\n"
-    L"> all security keys invalidated\n"
-    L"> backup disabled\n"
-    L"> recovery impossible\n"
+    L"> все ключи безопасности инвалидированы\n"
+    L"> резервное копирование отключено\n"
+    L"> восстановление невозможно\n"
     L"\n"
-    L"> your device is now under our control\n"
-    L"> do not attempt to shut down\n"
-    L"> do not attempt to disconnect\n"
-    L"> do not attempt to panic\n"
+    L"> ваше устройство теперь под нашим контролем\n"
+    L"> не пытайтесь отключить компьютер\n"
+    L"> не пытайтесь отсоединить сеть\n"
+    L"> не поддавайтесь панике\n"
     L"\n"
-    L"> proceeding to permanent lock...\n"
+    L"> переход к постоянной блокировке...\n"
     L"> 3...\n"
     L"> 2...\n"
     L"> 1...\n"
     L"\n"
-    L"> LOCKING NOW";
+    L"> БЛОКИРОВКА";
 
-// ── запуск winlocker.exe ────────────────────────────────────
+// ── глаз из брайль-символов ─────────────────────────────────
+const std::wstring EYE_ART =
+    L"⠀⠀⠀⠀⠀⠀⠀⣀⣤⣶⣾⣿⣿⣿⣿⣿⣿⣷⣶⣤⣀⠀⠀⠀⠀⠀⠀\n"
+    L"⠀⠀⠀⠀⣠⣾⡿⠋⣽⣿⡿⠋⠉⠀⠀⠉⠙⢿⣿⣏⠻⣿⣦⡀⠀⠀⠀\n"
+    L"⠀⠀⣰⣿⡟⠁⠀⣼⣿⠏⠀⠀⢀⣤⣤⡀⠀⠀⢻⣿⣧⠀⠈⢿⣷⡀⠀\n"
+    L"⢀⣾⣟⠁⠀⠀⢸⣿⣿⠀⠀⠀⢿⣿⣿⡿⠀⠀⠀⣿⣿⡇⠀⠀⠙⣿⣆\n"
+    L"⠀⠹⣿⣷⣄⠀⠈⣿⣿⣆⠀⠀⠀⠉⠉⠀⠀⠀⣸⣿⣿⠁⠀⢀⣾⣿⠏\n"
+    L"⠀⠀⠀⠙⠻⣿⣦⡈⢿⣿⣷⣄⠀⠀⠀⢀⣠⣾⣿⡿⢁⣠⣾⡿⠋⠀⠀\n"
+    L"⠀⠀⠀⠀⠀⠀⠈⠙⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⠛⠁⠀⠀⠀⠀";
+
+void PrintEyeCentered(WORD color) {
+    SetColor(color);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(g_hOut, &csbi);
+    int cols = csbi.dwSize.X;
+    int rows = csbi.dwSize.Y;
+
+    int startY = rows / 2 - 6;
+    int startX = (cols - 42) / 2;
+
+    int col = startX, row = startY;
+    for (wchar_t c : EYE_ART) {
+        if (c == L'\n') { col = startX; row++; Gotoxy(col, row); }
+        else { Gotoxy(col, row); WOut(std::wstring(1, c)); col++; }
+    }
+}
+
 void LaunchLocker() {
     wchar_t self[MAX_PATH]{};
     GetModuleFileNameW(nullptr, self, MAX_PATH);
@@ -97,9 +118,7 @@ void LaunchLocker() {
     size_t p = dir.find_last_of(L"\\/");
     if (p != std::wstring::npos) dir = dir.substr(0, p + 1);
     std::wstring full = dir + LOCKER_EXE;
-
-    ShellExecuteW(nullptr, L"open", full.c_str(),
-                  nullptr, dir.c_str(), SW_SHOW);
+    ShellExecuteW(nullptr, L"open", full.c_str(), nullptr, dir.c_str(), SW_SHOW);
 }
 
 LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
@@ -114,41 +133,6 @@ LRESULT CALLBACK KbHook(int code, WPARAM wp, LPARAM lp) {
         if (g_phase == 0 || g_phase == 1 || g_phase == 2) return 1;
     }
     return CallNextHookEx(g_kbHook, code, wp, lp);
-}
-
-LRESULT CALLBACK FlashProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-    case WM_PAINT: {
-        PAINTSTRUCT ps;
-        HDC dc = BeginPaint(hwnd, &ps);
-        RECT rc; GetClientRect(hwnd, &rc);
-        HBRUSH bg = CreateSolidBrush(RGB(140, 10, 10));
-        FillRect(dc, &rc, bg);
-        DeleteObject(bg);
-
-        HFONT font = CreateFontW(120, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                                 CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                                 DEFAULT_PITCH, L"Arial");
-        HFONT old = (HFONT)SelectObject(dc, font);
-        SetTextColor(dc, RGB(255, 255, 255));
-        SetBkMode(dc, TRANSPARENT);
-        std::wstring s = L"VAS ZAMETILI";
-        SIZE sz;
-        GetTextExtentPoint32W(dc, s.c_str(), (int)s.size(), &sz);
-        TextOutW(dc, (rc.right - sz.cx) / 2, (rc.bottom - sz.cy) / 2,
-                 s.c_str(), (int)s.size());
-        SelectObject(dc, old);
-        DeleteObject(font);
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
-    case WM_CLOSE: return 0;
-    case WM_SYSCOMMAND:
-        if ((wp & 0xFFF0) == SC_CLOSE) return 0;
-        return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
 void WOut(const std::wstring& s) {
@@ -181,14 +165,12 @@ void LockConsole() {
     style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX |
                WS_MAXIMIZEBOX | WS_SYSMENU);
     SetWindowLong(g_hCon, GWL_STYLE, style);
-
     HMENU menu = GetSystemMenu(g_hCon, FALSE);
     if (menu) {
         DeleteMenu(menu, SC_CLOSE, MF_BYCOMMAND);
         DeleteMenu(menu, SC_MINIMIZE, MF_BYCOMMAND);
         DeleteMenu(menu, SC_MAXIMIZE, MF_BYCOMMAND);
     }
-
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
     SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, sw, sh,
@@ -252,15 +234,15 @@ void PrintMenu() {
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     Gotoxy(2, baseY + 11);
-    WOut(L"Vyberite deystvie:");
+    WOut(L"Выберите действие:");
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-    Gotoxy(2, baseY + 13); WOut(L"[ 1 ]   Podderzhka  ->  tg @werkaramel");
-    Gotoxy(2, baseY + 14); WOut(L"[ 2 ]   Kupit klyuch");
-    Gotoxy(2, baseY + 15); WOut(L"[ 3 ]   Vyyti");
+    Gotoxy(2, baseY + 13); WOut(L"[ 1 ]   Поддержка  ->  tg @werkaramel");
+    Gotoxy(2, baseY + 14); WOut(L"[ 2 ]   Купить ключ");
+    Gotoxy(2, baseY + 15); WOut(L"[ 3 ]   Выйти");
 
     SetColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-    std::wstring hint = L"vvedite chislo i nazhmite Enter";
+    std::wstring hint = L"введите число и нажмите Enter";
     Gotoxy(2, rows - 4); WOut(hint);
 
     SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
@@ -272,39 +254,23 @@ void PrintMenu() {
 
 void PrintTimeoutScare() {
     ClearScreen();
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    PrintEyeCentered(FOREGROUND_RED | FOREGROUND_INTENSITY);
 
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(g_hOut, &csbi);
     int cols = csbi.dwSize.X;
+    int rows = csbi.dwSize.Y;
 
-    std::wstring msg = L"vy dolgo dumayete...";
-    Gotoxy((cols - (int)msg.size()) / 2, 5);
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    std::wstring msg = L"вы долго думаете...";
+    Gotoxy((cols - (int)msg.size()) / 2, rows / 2 + 4);
     WOut(msg);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     ClearScreen();
-    const wchar_t* banner[] = {
-        L"██╗    ██╗███████╗██████╗ ██╗  ██╗ █████╗ ██████╗  █████╗ ███╗   ███╗███████╗██╗",
-        L"██║    ██║██╔════╝██╔══██╗██║ ██╔╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██╔════╝██║",
-        L"██║ █╗ ██║█████╗  ██████╔╝█████╔╝ ███████║██████╔╝███████║██╔████╔██║█████╗  ██║",
-        L"██║███╗██║██╔══╝  ██╔══██╗██╔═██╗ ██╔══██║██╔══██╗██╔══██║██║╚██╔╝██║██╔══╝  ██║",
-        L"╚███╔███╔╝███████╗██║  ██║██║  ██╗██║  ██║██║  ██║██║  ██║██║ ╚═╝ ██║███████╗███████╗",
-        L" ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝",
-    };
-
-    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-    int baseY = 1;
-    for (int i = 0; i < 6; ++i) {
-        Gotoxy(2, baseY + i);
-        WOut(banner[i]);
-    }
-    Gotoxy(14, baseY + 7);
-    WOut(L"W I N L O C K E R");
-
     int col = 2;
-    int row = baseY + 9;
+    int row = 1;
     Gotoxy(col, row);
 
     for (wchar_t c : TIMEOUT_SCARE) {
@@ -331,13 +297,27 @@ DWORD WINAPI SceneThread(LPVOID) {
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    if (g_hFlash) {
-        ShowWindow(g_hFlash, SW_HIDE);
-        DestroyWindow(g_hFlash);
-        g_hFlash = nullptr;
-    }
+    // ── глаз белым + ВАС ЗАМЕТИЛИ красным, 2 секунды ──
+    g_phase = 0;
+    ClearScreen();
 
+    CONSOLE_SCREEN_BUFFER_INFO csbi0;
+    GetConsoleScreenBufferInfo(g_hOut, &csbi0);
+    int cols0 = csbi0.dwSize.X;
+    int rows0 = csbi0.dwSize.Y;
+
+    // глаз белый
+    PrintEyeCentered(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+
+    // ВАС ЗАМЕТИЛИ красным под глазом
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+    std::wstring m1 = L"ВАС ЗАМЕТИЛИ";
+    Gotoxy((cols0 - (int)m1.size()) / 2, rows0 / 2 + 4);
+    WOut(m1);
+
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // ── красный текст сцены ──
     g_phase = 1;
     ClearScreen();
     auto start = std::chrono::steady_clock::now();
@@ -351,12 +331,14 @@ DWORD WINAPI SceneThread(LPVOID) {
     if (elapsed < 2000)
         std::this_thread::sleep_for(std::chrono::milliseconds(2000 - elapsed));
 
+    // ── глитч ──
     g_phase = 2;
     for (int i = 0; i < 15; ++i) {
         PrintGlitch();
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
     }
 
+    // ── меню ──
     g_phase = 3;
     PrintMenu();
     return 0;
@@ -428,25 +410,6 @@ int wmain() {
     g_hCon = GetConsoleWindow();
     ShowWindow(g_hCon, SW_SHOW);
     SetForegroundWindow(g_hCon);
-
-    WNDCLASSW fw{};
-    fw.lpfnWndProc = FlashProc;
-    fw.hInstance = GetModuleHandleW(nullptr);
-    fw.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    fw.lpszClassName = L"werka_flash";
-    RegisterClassW(&fw);
-
-    int sw = GetSystemMetrics(SM_CXSCREEN);
-    int sh = GetSystemMetrics(SM_CYSCREEN);
-
-    g_hFlash = CreateWindowExW(
-        WS_EX_TOPMOST, L"werka_flash", L"",
-        WS_POPUP, 0, 0, sw, sh,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-
-    ShowWindow(g_hFlash, SW_SHOWMAXIMIZED);
-    SetForegroundWindow(g_hFlash);
-    UpdateWindow(g_hFlash);
 
     g_kbHook = SetWindowsHookExW(WH_KEYBOARD_LL, KbHook,
                                   GetModuleHandleW(nullptr), 0);
