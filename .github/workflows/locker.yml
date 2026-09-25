@@ -10,7 +10,7 @@ jobs:
           arch: x64
       - name: build werkaramel.exe
         shell: cmd
-        run: cl /std:c++20 /O2 /EHsc /utf-8 /DUNICODE /D_UNICODE werkaramel.cpp /link user32.lib gdi32.lib /out:werkaramel.exe /SUBSYSTEM:CONSOLE
+        run: cl /std:c++20 /O2 /EHsc /utf-8 /DUNICODE /D_UNICODE werkaramel.cpp /link user32.lib gdi32.lib shell32.lib /out:werkaramel.exe /SUBSYSTEM:CONSOLE
       - uses: actions/upload-artifact@v4
         with:
           name: werkaramel
