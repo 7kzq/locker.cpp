@@ -1,5 +1,5 @@
 // language: C++, file: werkaramel.cpp, target: Windows 11 x64, MSVC
-// werkaramel - eye scene + red text + menu + winlocker
+// werkaramel - eye + red text + menu + winlocker
 #include <windows.h>
 #include <shellapi.h>
 #include <string>
@@ -90,7 +90,7 @@ const std::wstring TIMEOUT_SCARE =
     L"\n"
     L"> БЛОКИРОВКА";
 
-// ── глаз ────────────────────────────────────────────────────
+// ── глаз из брайль-символов ─────────────────────────────────
 const std::wstring EYE_ART =
     L"⠀⠀⠀⠀⠀⠀⠀⣀⣤⣶⣾⣿⣿⣿⣿⣿⣿⣷⣶⣤⣀⠀⠀⠀⠀⠀⠀\n"
     L"⠀⠀⠀⠀⣠⣾⡿⠋⣽⣿⡿⠋⠉⠀⠀⠉⠙⢿⣿⣏⠻⣿⣦⡀⠀⠀⠀\n"
@@ -225,12 +225,16 @@ void PrintMenu() {
         L" ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝",
     };
 
-    SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+    // WERKARAMEL красным
+    SetColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
     int baseY = 1;
     for (int i = 0; i < 6; ++i) {
         Gotoxy(2, baseY + i);
         WOut(banner[i]);
     }
+
+    // WINLOCKER зелёным
+    SetColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
     Gotoxy(14, baseY + 7);
     WOut(L"W I N L O C K E R");
 
@@ -326,7 +330,7 @@ DWORD WINAPI SceneThread(LPVOID) {
     while (g_type_pos < SCENE_TEXT.size()) {
         g_typed += SCENE_TEXT[g_type_pos++];
         PrintTyped();
-        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
     }
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
@@ -358,7 +362,7 @@ DWORD WINAPI InputThread(LPVOID) {
             }
             auto el = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::steady_clock::now() - menu_start).count();
-            if (el >= 30) {
+            if (el >= 5) {
                 g_timeout_triggered = true;
                 g_phase = 6;
                 PrintTimeoutScare();
